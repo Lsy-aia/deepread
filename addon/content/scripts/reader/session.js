@@ -144,7 +144,15 @@
       this.summaryStatus = "idle";
       this._listeners = new Set();
       this._abort = null;
+      this.flashcards = null;
+      this.githubRepo = null;
       this.overlay = new DeepRead.Overlay(this);
+      this.rail = DeepRead.Rail ? new DeepRead.Rail(this) : null;
+      this.editingFlashcard = null;
+      this.flipped = new Set();
+      this.on((event) => {
+        if (event === "change" || event === "flashcards") this.rail?.refresh();
+      });
     }
 
     get item() {
@@ -202,6 +210,7 @@
       this.view = view;
 
       const stored = await DeepRead.Store.getPaper(this.key);
+      this.githubRepo = stored?.github_url || null;
       if (stored?.hierarchical_data) {
         this.data = {
           hierarchicalData: stored.hierarchical_data,
@@ -221,13 +230,88 @@
       }
       this.overlay.attach(view);
       if (this.data) this.overlay.setData(this.data.hierarchicalData);
+      this.rail?.attach(view);
+      this.loadFlashcards().catch((e) => DeepRead.log("loading flashcards failed", String(e)));
       this._emit();
     }
 
     destroy() {
       this.cancel();
+      this.rail?.detach();
       this.overlay.detach();
       this._listeners.clear();
+    }
+
+    /* ---------- flashcards ---------- */
+
+    async loadFlashcards() {
+      this.flashcards = await DeepRead.Flashcards.list(this.key);
+      this._emit("flashcards");
+      return this.flashcards;
+    }
+
+    async saveFlashcard(card) {
+      const saved = await DeepRead.Flashcards.save(this.key, card);
+      const list = (this.flashcards || []).filter((c) => c.id !== saved.id);
+      list.push(saved);
+      this.flashcards = DeepRead.Flashcards.sort(list);
+      this._emit("flashcards", { id: saved.id });
+      return saved;
+    }
+
+    async deleteFlashcard(id) {
+      await DeepRead.Flashcards.remove(this.key, id);
+      this.flashcards = (this.flashcards || []).filter((c) => c.id !== id);
+      this._emit("flashcards", { id });
+    }
+
+    async navigateToFlashcard(card) {
+      if (!card) return false;
+      const rects = Array.isArray(card.rects) && card.rects.length ? card.rects : null;
+      await this.reader.navigate(rects
+        ? { position: { pageIndex: card.pageIndex, rects: [DeepRead.Overlay.unionRect(rects)] } }
+        : { pageIndex: card.pageIndex || 0 });
+      if (rects) this.overlay.flash({ pageIndex: card.pageIndex, rects });
+      return true;
+    }
+
+    /** Context passed to flashcard/QA prompts: title + abstract + the paragraph(s) around a page. */
+    flashcardContext(pageIndex) {
+      const item = this.parentItem;
+      const title = item?.getField?.("title") || "";
+      const abstract = item?.isRegularItem?.() ? String(item.getField("abstractNote") || "").slice(0, 3000) : "";
+      const page = (this.data?.hierarchicalData || []).find((p) => p.pageIndex === pageIndex);
+      const pageText = (page?.paragraphs || []).map((p) => p.paragraphText || "").join("\n\n").slice(0, 8000);
+      return { title, abstract, pageText };
+    }
+
+    /* ---------- code repository ---------- */
+
+    /** Plain text of the paper for repository detection (parse results first, then Zotero full text). */
+    async paperText(maxChars = 400000) {
+      await this.init();
+      let text = "";
+      if (this.data?.markdown) text = this.data.markdown;
+      else if (this.data?.hierarchicalData) {
+        text = this.data.hierarchicalData.flatMap((p) => (p.paragraphs || []).map((x) => x.paragraphText || "")).join("\n");
+      }
+      if (!text) {
+        try {
+          const cache = Zotero.Fulltext.getItemCacheFile(this.item);
+          if (cache?.exists()) text = await Zotero.File.getContentsAsync(cache);
+        }
+        catch (e) {
+          DeepRead.log("full-text cache read failed", String(e));
+        }
+      }
+      const abstract = this.parentItem?.isRegularItem?.() ? String(this.parentItem.getField("abstractNote") || "") : "";
+      return `${abstract}\n${text}`.slice(0, maxChars);
+    }
+
+    async setGitHubRepo(fullName) {
+      this.githubRepo = fullName || null;
+      await DeepRead.Store.savePaper(this.key, this.item.id, { github_url: this.githubRepo });
+      this._emit("github");
     }
 
     pdfAdapter() {
@@ -436,6 +520,85 @@
 
     /* ---------- user state ---------- */
 
+    _saveUserStateSoon() {
+      clearTimeout(this._saveUserStateTimer);
+      this._saveUserStateTimer = setTimeout(() => {
+        DeepRead.Store.savePaper(this.key, this.item.id, { user_state: this.userState })
+          .catch((e) => DeepRead.log("saving user state failed", String(e)));
+      }, 500);
+    }
+
+    static paragraphKey(paragraph) {
+      return `p_${paragraph.pageIndex}_${paragraph.paragraphIndex}`;
+    }
+
+    /** Paragraph summary with the user's inline edit applied. */
+    paragraphSummary(paragraph) {
+      const edit = this.userState.edits?.[DeepRead.Session.paragraphKey(paragraph)];
+      return edit?.summary ?? paragraph.paragraphSummary ?? "";
+    }
+
+    setParagraphSummary(paragraph, summary) {
+      const key = DeepRead.Session.paragraphKey(paragraph);
+      const edits = { ...(this.userState.edits || {}) };
+      if (!summary || summary === paragraph.paragraphSummary) delete edits[key];
+      else edits[key] = { ...(edits[key] || {}), summary };
+      this.userState.edits = edits;
+      this._saveUserStateSoon();
+    }
+
+    isCardHidden(key) {
+      return !!this.userState.hidden?.[key];
+    }
+
+    get hiddenCardCount() {
+      return Object.keys(this.userState.hidden || {}).length;
+    }
+
+    setCardHidden(key, hidden) {
+      const map = { ...(this.userState.hidden || {}) };
+      if (hidden) map[key] = true;
+      else delete map[key];
+      this.userState.hidden = map;
+      this._saveUserStateSoon();
+      this.rail?.refresh();
+    }
+
+    showHiddenCards() {
+      this.userState.hidden = {};
+      this._saveUserStateSoon();
+      this.rail?.refresh();
+    }
+
+    /**
+     * Create a flashcard anchored at `rects`; if an LLM is configured, generate question/answer
+     * from the quote in the background, otherwise open it for editing.
+     */
+    async createFlashcard({ pageIndex, rects, quote, source = "selection" }) {
+      const card = await this.saveFlashcard({
+        pageIndex, rects: rects || [], quote: String(quote || "").trim().slice(0, 4000), question: "", answer: "", source,
+      });
+      if (!this.rail?.enabled) DeepRead.Panes.reveal(this.reader, "flashcards");
+      if (!DeepRead.LLM.isConfigured() || !card.quote) {
+        this.editingFlashcard = card.id;
+        this._emit("flashcards", { id: card.id });
+        return card;
+      }
+      const busy = { ...card, _busy: DeepRead.bilingual("AI 出题中…", "Generating…") };
+      this.flashcards = DeepRead.Flashcards.sort([...(this.flashcards || []).filter((c) => c.id !== card.id), busy]);
+      this._emit("flashcards", { id: card.id });
+      try {
+        const { question, answer } = await DeepRead.Flashcards.generate({ quote: card.quote, context: this.flashcardContext(pageIndex) });
+        return await this.saveFlashcard({ ...card, question, answer });
+      }
+      catch (error) {
+        this._notify(DeepRead.util.formatError(error), "error");
+        this.editingFlashcard = card.id;
+        await this.saveFlashcard(card);
+        return card;
+      }
+    }
+
     pointLevel(point) {
       const override = this.userState.pointImportance?.[point.id];
       return Number(override || point.importance_level || 1);
@@ -444,11 +607,8 @@
     setPointImportance(pointId, level) {
       this.userState.pointImportance = { ...(this.userState.pointImportance || {}), [pointId]: level };
       this.overlay.renderAllPages();
-      clearTimeout(this._saveUserStateTimer);
-      this._saveUserStateTimer = setTimeout(() => {
-        DeepRead.Store.savePaper(this.key, this.item.id, { user_state: this.userState })
-          .catch((e) => DeepRead.log("saving user state failed", String(e)));
-      }, 500);
+      this.rail?.refresh();
+      this._saveUserStateSoon();
     }
 
     /* ---------- navigation ---------- */

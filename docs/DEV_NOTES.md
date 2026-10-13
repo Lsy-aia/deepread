@@ -120,3 +120,53 @@ Section headers use `.label`, sidenav buttons and section buttons use `.tooltipt
   blocking integrity check with a progress popup on the next start.
 - Preference-pane scripts run before the pane fragment is inserted; Zotero then dispatches a non-bubbling
   `load` event on the pane root (listen in the capture phase).
+
+## v0.2 contracts
+
+### Session additions (`reader/session.js`, owned by the lead — use, don't edit)
+- `session.flashcards` (array or null until loaded), `await session.loadFlashcards()`,
+  `await session.saveFlashcard(card)` → saved card (upsert), `await session.deleteFlashcard(id)`,
+  `await session.navigateToFlashcard(card)`, `session.flashcardContext(pageIndex)` → `{ title, abstract, pageText }`.
+  Emits `"flashcards"` (payload `{ id }`) after every change.
+- `session.githubRepo` ("owner/repo" or null, persisted in papers.github_url), `await session.setGitHubRepo(fullName|null)`
+  (emits `"github"`), `await session.paperText(maxChars)` → abstract + parsed text (or Zotero full-text cache).
+- `session.askAI({ text, pageIndex })` quotes text into the chat pane; `session.reader.navigate(location)`.
+- Pane renderers: `DeepRead.Panes.renderers.<kind> = (ctx) => {}` with `ctx = { body, doc, session, event, h }`.
+  Events: `change | progress | ask | chat | chat-delta | flashcards | github`. Return early for events you don't need
+  (re-rendering on every progress tick destroys input focus). `h(tag, props, ...children)` = `DeepRead.util.h`.
+  Shared helpers: `DeepRead.Markdown.render(doc, text, contextEl)` → sanitized fragment (marked + KaTeX),
+  `DeepRead.Markdown.wireLinks(container)`, `DeepRead.Panes.reportError(session, error)`, CSS classes in
+  `content/styles/panes.css` (`dr-pane`, `dr-muted`, `dr-error`, `dr-empty`, `dr-primary-button`, `dr-link-button`,
+  `dr-clickable`, `dr-markdown`, `dr-chip`). Put new pane CSS in your own stylesheet file and tell the lead.
+
+### DeepRead.Flashcards — `services/flashcards.js`
+Card: `{ id, pageIndex, rects: [[x1,y1,x2,y2]] /* PDF coords */, quote, question, answer, color, source:
+"selection"|"paragraph"|"manual", createdAt, updatedAt }` (ISO strings).
+```js
+await DeepRead.Flashcards.init()                 // CREATE TABLE IF NOT EXISTS flashcards (... ) on DeepRead.Store.db
+await DeepRead.Flashcards.list(attachmentKey)    // → cards in reading order (DeepRead.Flashcards.sort)
+DeepRead.Flashcards.sort(cards)                  // pageIndex asc, then top (max y) desc, then createdAt
+await DeepRead.Flashcards.save(attachmentKey, card) // upsert; assigns id "fc_<12 hex>" and timestamps; returns card
+await DeepRead.Flashcards.remove(attachmentKey, id)
+await DeepRead.Flashcards.generate({ quote, context, signal })  // → { question, answer } via DeepRead.LLM (JSON)
+await DeepRead.Flashcards.answer({ question, quote, context, signal }) // → markdown answer string
+await DeepRead.Flashcards.exportToNote(parentItem, cards, { title }) // → new child note (HTML) in Zotero
+```
+`context` = `session.flashcardContext(pageIndex)`; answer language = `DeepRead.PARSE_LANGUAGES[DeepRead.prefs.language()]`.
+
+### DeepRead.GitHub — `services/github.js`
+```js
+DeepRead.GitHub.parseRepo(urlOrFullName)   // → { owner, repo, fullName, url } | null
+DeepRead.GitHub.findReposInText(text)      // → [{ fullName, url, count, firstIndex }] most relevant first
+await DeepRead.GitHub.search(title, { signal })  // → [{ fullName, url, description, stars, language, updatedAt }]
+await DeepRead.GitHub.getRepo(fullName)    // → { fullName, url, description, stars, forks, language, license, updatedAt, defaultBranch, topics, homepage, archived }
+await DeepRead.GitHub.getReadme(fullName)  // → { markdown, htmlURL } | null
+await DeepRead.GitHub.listDir(fullName, path = "", ref)   // → [{ name, path, type: "file"|"dir", size }]
+await DeepRead.GitHub.getFile(fullName, path, ref)        // → { text, size, truncated, binary, htmlURL }
+```
+Optional token pref `github.token` (Bearer). Errors name the step, include status; rate limit → message with reset time.
+
+### DeepRead.DeepWiki — `services/deepwiki.js`
+Client for DeepWiki's public MCP server (pref `deepwiki.endpoint`, default `https://mcp.deepwiki.com/mcp`):
+`callTool(name, args, { signal })` → text; `readWikiStructure(fullName)`, `readWikiContents(fullName)`,
+`askQuestion(fullName, question, { signal })`. Handles MCP initialize/session id and JSON or SSE responses.

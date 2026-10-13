@@ -3,6 +3,8 @@
 .dr-pane {
   display: flex;
   flex-direction: column;
+  /* Our content (code, long URLs, wide README tables) must never widen the shared item pane. */
+  contain: inline-size;
   min-width: 0;
   max-width: 100%;
   overflow-wrap: anywhere;
@@ -144,3 +146,12 @@
 
 .dr-pane * { min-width: 0; }
 .dr-pane pre, .dr-pane table, .dr-pane .katex-display { max-width: 100%; overflow-x: auto; }
+
+/* Keep rendered markdown inside the item pane (all sections share one width). */
+.dr-markdown { max-width: 100%; overflow-wrap: anywhere; word-break: break-word; }
+.dr-markdown img, .dr-markdown svg, .dr-markdown video { max-width: 100%; height: auto; }
+.dr-markdown table { display: block; max-width: 100%; overflow-x: auto; }
+.dr-markdown pre { white-space: pre; max-width: 100%; overflow-x: auto; }
+.dr-markdown code { overflow-wrap: anywhere; }
+.dr-markdown h1 { font-size: 1.15em; }
+.dr-markdown h2 { font-size: 1.05em; }

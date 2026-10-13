@@ -108,6 +108,20 @@
         ...common("outline"),
       });
 
+      paneIDs.flashcards = Zotero.ItemPaneManager.registerSection({
+        paneID: "deepread-flashcards",
+        header: { l10nID: "deepread-pane-flashcards-header", icon: icon("flashcards") },
+        sidenav: { l10nID: "deepread-pane-flashcards-sidenav", icon: icon("flashcards") },
+        ...common("flashcards"),
+      });
+
+      paneIDs.code = Zotero.ItemPaneManager.registerSection({
+        paneID: "deepread-code",
+        header: { l10nID: "deepread-pane-code-header", icon: icon("code") },
+        sidenav: { l10nID: "deepread-pane-code-sidenav", icon: icon("code") },
+        ...common("code"),
+      });
+
       paneIDs.chat = Zotero.ItemPaneManager.registerSection({
         paneID: "deepread-chat",
         header: { l10nID: "deepread-pane-chat-header", icon: icon("chat") },
@@ -232,6 +246,20 @@
       const parserUtils = Cc["@mozilla.org/parserutils;1"].getService(Ci.nsIParserUtils);
       const clean = parserUtils.sanitize(html, flags);
       const parsed = new doc.defaultView.DOMParser().parseFromString(clean, "text/html");
+      // No remote images in privileged UI (tracking pixels, layout blow-ups): turn them into links.
+      for (const img of [...parsed.body.querySelectorAll("img")]) {
+        const src = img.getAttribute("src") || "";
+        const alt = img.getAttribute("alt") || "image";
+        if (/^https?:\/\//i.test(src)) {
+          const a = parsed.createElement("a");
+          a.setAttribute("href", src);
+          a.textContent = `[${alt}]`;
+          img.replaceWith(a);
+        }
+        else {
+          img.remove();
+        }
+      }
       const frag = doc.createDocumentFragment();
       for (const node of [...parsed.body.childNodes]) {
         frag.append(doc.importNode(node, true));

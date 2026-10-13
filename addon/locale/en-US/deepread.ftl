@@ -85,3 +85,12 @@ deepread-pref-chat-maxcontext = Chat max context characters
 
 deepread-pref-privacy-title = Privacy
 deepread-pref-privacy-note = API keys are stored in Zotero preferences on this computer only. PDF content is sent only to the services you configure here.
+
+deepread-pane-flashcards-header =
+    .label = Flashcards
+deepread-pane-flashcards-sidenav =
+    .tooltiptext = Flashcards
+deepread-pane-code-header =
+    .label = Code
+deepread-pane-code-sidenav =
+    .tooltiptext = Code

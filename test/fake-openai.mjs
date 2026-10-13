@@ -159,9 +159,14 @@ http.createServer(async (req, res) => {
       return send(res, 400, { error: { message: 'response_format json_schema is not supported by this server', type: 'invalid_request_error', param: 'response_format' } });
     }
     const text = lastUserText(body.messages || []);
-    const kind = detect(text);
+    const systemText = (body.messages || []).filter((m) => m.role === 'system').map((m) => String(m.content || '')).join('\n');
+    let kind = detect(text);
+    if (kind === 'chat' && /"question"/.test(systemText) && /"answer"/.test(systemText)) kind = 'flashcard';
     let content, info = '';
     if (kind === 'chat') content = chatAnswer();
+    else if (kind === 'flashcard') {
+      content = JSON.stringify({ question: '这段话为什么重要？(fake)', answer: '因为它提出了 **注意力** 机制，复杂度为 $O(n^2)$。(fake)' });
+    }
     else {
       const r = { page: buildPage, article_summary: buildArticle, outline: buildOutline, filter: buildFilter }[kind](text);
       content = JSON.stringify(r.obj);

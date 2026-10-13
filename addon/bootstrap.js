@@ -12,7 +12,8 @@ async function startup({ id, version, rootURI }) {
     .getService(Components.interfaces.amIAddonManagerStartup);
   const manifestURI = Services.io.newURI(rootURI + "manifest.json");
   chromeHandle = aomStartup.registerChrome(manifestURI, [
-    ["content", "deepread", rootURI + "content/"],
+    // contentaccessible: the reader/PDF documents (resource://) load our KaTeX stylesheet and fonts.
+    ["content", "deepread", rootURI + "content/", "contentaccessible=yes"],
   ]);
 
   // Privileged globals the bootstrap sandbox does not expose by default.

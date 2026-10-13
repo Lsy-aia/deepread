@@ -85,3 +85,12 @@ deepread-pref-chat-maxcontext = 对话最大上下文字符数
 
 deepread-pref-privacy-title = 隐私
 deepread-pref-privacy-note = API Key 仅保存在本机的 Zotero 设置中；PDF 内容只会发送到您在此处配置的服务。
+
+deepread-pane-flashcards-header =
+    .label = 闪卡
+deepread-pane-flashcards-sidenav =
+    .tooltiptext = 闪卡
+deepread-pane-code-header =
+    .label = 代码
+deepread-pane-code-sidenav =
+    .tooltiptext = 代码

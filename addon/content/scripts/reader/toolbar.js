@@ -86,7 +86,10 @@
   function toggleOption(prefKey, optionKey) {
     const value = !(DeepRead.prefs.get(prefKey) !== false);
     DeepRead.prefs.set(prefKey, value);
-    DeepRead.Session.forEachOverlay((overlay) => overlay.setOptions({ [optionKey]: value }));
+    DeepRead.Session.forEachOverlay((overlay) => {
+      if (optionKey) overlay.setOptions({ [optionKey]: value });
+      overlay.session.rail?.refresh();
+    });
   }
 
   function openMenu(session, doc, anchor) {
@@ -110,9 +113,14 @@
       item([h(doc, "span", { class: "dr-check" }), session.hasResults ? DeepRead.t("toolbar.rerun") : DeepRead.t("toolbar.run")],
         () => onRun(session, doc)),
       h(doc, "hr"),
+      item([check("view.marginCards"), DeepRead.bilingual("页边卡片", "Margin cards")], () => toggleOption("view.marginCards", null)),
       item([check("view.highlights"), DeepRead.t("toolbar.showHighlights")], () => toggleOption("view.highlights", "highlights")),
       item([check("view.hoverCards"), DeepRead.t("toolbar.showCards")], () => toggleOption("view.hoverCards", "hoverCards")),
       item([check("view.translationPopup"), DeepRead.t("toolbar.showTranslation")], () => toggleOption("view.translationPopup", "translationPopup")),
+      session.hiddenCardCount
+        ? item([h(doc, "span", { class: "dr-check" }), DeepRead.bilingual(`显示已隐藏的卡片（${session.hiddenCardCount}）`, `Show hidden cards (${session.hiddenCardCount})`)],
+          () => session.showHiddenCards())
+        : null,
       h(doc, "hr"),
       item([h(doc, "span", { class: "dr-check" }), DeepRead.bilingual("DeepRead 设置…", "DeepRead settings…")], () => DeepRead.openPreferences()),
       session.hasResults

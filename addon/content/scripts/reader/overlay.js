@@ -212,6 +212,12 @@
       this.renderAllPages();
     }
 
+    /** When the margin rail is visible, floating hover cards are replaced by rail highlighting. */
+    setRailActive(active) {
+      this.railActive = !!active;
+      if (active) this._hideCard(true);
+    }
+
     setOptions(options) {
       Object.assign(this.options, options);
       if (!this.options.hoverCards) this._hideCard(true);
@@ -423,7 +429,7 @@
     _onPointerMove(event) {
       if (!this.pages.size) return;
       this.altDown = !!event.altKey;
-      const active = this.options.hoverCards || (this.altDown && this.options.translationPopup);
+      const active = this.options.hoverCards || this.railActive || (this.altDown && this.options.translationPopup);
       if (!active || event.buttons) {
         if (this.hoverPara) this._setHover(null);
         return;
@@ -439,12 +445,14 @@
       clearTimeout(this._timers.show);
       if (!paragraph) {
         this._clearTransient();
+        this.session.rail?.linkParagraph(null);
         this._scheduleHide();
         return;
       }
       clearTimeout(this._timers.hide);
       this._drawHover(paragraph);
-      if (this.altDown || !this.options.hoverCards) return;
+      this.session.rail?.linkParagraph(paragraph);
+      if (this.altDown || !this.options.hoverCards || this.railActive) return;
       this._timers.show = setTimeout(() => this._showCard(paragraph), this.card && !this.card.hidden ? 40 : SHOW_DELAY);
     }
 
@@ -494,7 +502,7 @@
       card.replaceChildren();
 
       const head = el(doc, "div", "dr-head");
-      head.append(el(doc, "div", "dr-summary", paragraph.paragraphSummary || ""));
+      head.append(el(doc, "div", "dr-summary", this.session.paragraphSummary(paragraph) || ""));
       const actions = el(doc, "div", "dr-actions");
       const button = (label, title, onClick) => {
         const b = el(doc, "button", "", label);
@@ -506,7 +514,7 @@
         actions.append(b);
       };
       button("⧉", DeepRead.t("card.copySummary"), () => {
-        const lines = [paragraph.paragraphSummary, ...(paragraph.points || []).map((p) => `- ${p.summary}`)];
+        const lines = [this.session.paragraphSummary(paragraph), ...(paragraph.points || []).map((p) => `- ${p.summary}`)];
         DeepRead.util.copyToClipboard(lines.filter(Boolean).join("\n"));
       });
       if (this._paragraphTranslation(paragraph)) {
@@ -514,6 +522,9 @@
           DeepRead.util.copyToClipboard(this._paragraphTranslation(paragraph));
         });
       }
+      button("卡", DeepRead.bilingual("生成闪卡", "Make a flashcard"), () => {
+        this.session.createFlashcard({ pageIndex: paragraph.pageIndex, rects: paragraph.rects, quote: paragraph.paragraphText || "", source: "paragraph" });
+      });
       button("AI", DeepRead.t("card.askAI"), () => {
         this.session.askAI({ text: paragraph.paragraphText || "", pageIndex: paragraph.pageIndex });
       });

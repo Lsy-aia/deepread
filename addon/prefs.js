@@ -22,7 +22,11 @@ pref("extensions.zotero.deepread.parser.selfHostBackend", "pipeline");
 
 pref("extensions.zotero.deepread.language", "zh");
 pref("extensions.zotero.deepread.filterAuthorBlocks", true);
+pref("extensions.zotero.deepread.view.marginCards", true);
+pref("extensions.zotero.deepread.view.railWidth", 300);
 pref("extensions.zotero.deepread.view.highlights", true);
 pref("extensions.zotero.deepread.view.hoverCards", true);
 pref("extensions.zotero.deepread.view.translationPopup", true);
 pref("extensions.zotero.deepread.chat.maxContextChars", 120000);
+pref("extensions.zotero.deepread.github.token", "");
+pref("extensions.zotero.deepread.deepwiki.endpoint", "https://mcp.deepwiki.com/mcp");
