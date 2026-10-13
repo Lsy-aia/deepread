@@ -104,3 +104,19 @@ Section headers use `.label`, sidenav buttons and section buttons use `.tooltipt
 - Fake services: `test/fake-openai.mjs` (OpenAI-compatible), `test/fake-mineru.mjs` (MinerU `/file_parse`).
 - A separate Zotero profile + data dir is used for testing; never touch the user's real profile
   (`~/.zotero` → `~/Applications/Zotero/profile`) or data dir (`~/Applications/Zotero/data`).
+
+## Zotero 10 / Gecko 140 gotchas (learned the hard way)
+- `applications.zotero.update_url` and `strict_max_version` are **required**; otherwise the add-on is rejected
+  silently and a sideloaded XPI is deleted from the profile.
+- Developer proxy files (a text file with the source path) are detected but never installed; sideload a built XPI.
+- Zotero starts plugins sequentially and awaits each `startup()`; never block startup on long work.
+- The bootstrap sandbox has no `console`; `bootstrap.js` injects a shim (verbose logs need pref `deepread.debug`).
+- `Services.parserUtils` is gone; use `Cc["@mozilla.org/parserutils;1"].getService(Ci.nsIParserUtils)`.
+  HTML fragment parsing is unavailable in the XHTML main window: sanitize → DOMParser → importNode.
+- Values resolved from content promises come back as Xrays: pdf.js getters (`page.view`, `getViewport`) are
+  invisible until you `.wrappedJSObject` them. Clone arguments into content with `Cu.cloneInto`.
+- Listeners added by privileged code to content nodes ignore untrusted (synthetic) events.
+- Close `Zotero.DBConnection`s on app quit (`Zotero.addShutdownListener`): a non-empty `-wal` makes Zotero run a
+  blocking integrity check with a progress popup on the next start.
+- Preference-pane scripts run before the pane fragment is inserted; Zotero then dispatches a non-bubbling
+  `load` event on the pane root (listen in the capture phase).
