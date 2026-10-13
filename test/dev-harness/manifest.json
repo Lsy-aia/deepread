@@ -1,0 +1,14 @@
+{
+  "manifest_version": 2,
+  "name": "DeepRead E2E Runner (TEST PROFILE ONLY)",
+  "version": "0.0.1",
+  "description": "Runs the repo's end-to-end test script at startup when DEEPREAD_E2E_SCRIPT is set, writes results to a file and quits. Install only in the isolated test profile.",
+  "applications": {
+    "zotero": {
+      "id": "deepread-e2e@lsy-aia.github.io",
+      "strict_min_version": "7.0",
+      "strict_max_version": "10.9.9",
+      "update_url": "https://127.0.0.1/deepread-e2e/update.json"
+    }
+  }
+}

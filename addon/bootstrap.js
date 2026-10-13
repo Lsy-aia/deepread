@@ -30,12 +30,32 @@ async function startup({ id, version, rootURI }) {
   }
   const timers = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
 
+  // The bootstrap sandbox has no `console`; route the (chatty) ported code to Zotero's debug log.
+  const fmt = (args) => args.map((a) => {
+    if (typeof a === "string") return a;
+    if (a instanceof Error) return a.stack || String(a);
+    try {
+      return JSON.stringify(a)?.slice(0, 2000);
+    }
+    catch (e) {
+      return String(a);
+    }
+  }).join(" ");
+  const verbose = () => Zotero.Prefs.get("deepread.debug") === true;
+  const consoleShim = {
+    log: (...args) => verbose() && Zotero.debug(`[DeepRead] ${fmt(args)}`, 5),
+    debug: (...args) => verbose() && Zotero.debug(`[DeepRead] ${fmt(args)}`, 5),
+    info: (...args) => Zotero.debug(`[DeepRead] ${fmt(args)}`, 4),
+    warn: (...args) => Zotero.debug(`[DeepRead][warn] ${fmt(args)}`, 3),
+    error: (...args) => Zotero.debug(`[DeepRead][error] ${fmt(args)}`, 2),
+  };
+
   const scope = {
     Zotero, Services, Components, ChromeUtils,
     Cc: Components.classes, Ci: Components.interfaces, Cu: Components.utils,
     setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
     setInterval: timers.setInterval, clearInterval: timers.clearInterval,
-    console,
+    console: consoleShim,
     DeepRead: { id, version, rootURI },
   };
   for (const name of globalNames) {

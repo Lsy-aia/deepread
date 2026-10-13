@@ -24,7 +24,20 @@
     const clone = (value) => Components.utils.cloneInto(value, win);
     const copyOut = (value) => JSON.parse(win.JSON.stringify(value));
     const doc = app.pdfDocument;
+    // pageIndex → { viewport: { viewBox, originalViewBox, width, height } }; filled by prepareGeometry().
+    const geometry = [];
+    const pageViews = [];
     return {
+      async prepareGeometry() {
+        for (let i = 0; i < doc.numPages; i++) {
+          if (geometry[i]) continue;
+          const page = waived(await doc.getPage(i + 1));
+          const view = Array.from(page.view);
+          const viewport = { viewBox: view, originalViewBox: view, width: view[2] - view[0], height: view[3] - view[1] };
+          geometry[i] = viewport;
+          pageViews[i] = { viewport, originalPage: { viewport, div: null }, div: null };
+        }
+      },
       pdfDocument: {
         get numPages() {
           return doc.numPages;
@@ -33,12 +46,12 @@
           return copyOut(await doc.getPageData(clone({ pageIndex: params.pageIndex })));
         },
         async getPage(pageNumber) {
-          const page = await doc.getPage(pageNumber);
+          const page = waived(await doc.getPage(pageNumber));
           return {
             view: Array.from(page.view),
             rotate: page.rotate,
             getViewport(params) {
-              const viewport = page.getViewport(clone({ scale: params?.scale ?? 1 }));
+              const viewport = waived(page.getViewport(clone({ scale: params?.scale ?? 1 })));
               return {
                 width: viewport.width,
                 height: viewport.height,
@@ -57,6 +70,12 @@
       pdfViewer: {
         get pagesCount() {
           return app.pdfViewer.pagesCount;
+        },
+        getPageView(index) {
+          return pageViews[index] || null;
+        },
+        get _pages() {
+          return pageViews;
         },
         get currentScale() {
           return app.pdfViewer.currentScale;
@@ -227,8 +246,9 @@
     }
 
     _newPipeline(signal, onProgress) {
+      const adapter = this.pdfAdapter();
       return new DeepRead.Pipeline({
-        getPdfApp: () => this.pdfAdapter(),
+        getPdfApp: () => adapter,
         llm: (options) => DeepRead.LLM.complete({ ...options, signal: options.signal || signal }),
         parsePDF: async ({ onStatus } = {}) => {
           const filePath = await this.item.getFilePathAsync();

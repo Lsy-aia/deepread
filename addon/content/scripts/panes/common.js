@@ -5,7 +5,7 @@
  *
  * License: AGPL-3.0-or-later
  */
-/* global DeepRead, Zotero, Services, Ci */
+/* global DeepRead, Zotero, Services, Cc, Ci */
 
 (function () {
   const bodies = new WeakMap(); // body element → { kind, session, unsubscribe }
@@ -59,7 +59,7 @@
       renderers[state.kind]?.({ body, doc, session: state.session, event, h: (...args) => DeepRead.util.h(doc, ...args) });
     }
     catch (e) {
-      DeepRead.log(`render ${state.kind} failed`, e?.stack || String(e));
+      DeepRead.log(`render ${state.kind} failed: ${e}`, e?.stack || "");
     }
   }
 
@@ -226,8 +226,16 @@
         frag.append(doc.createTextNode(String(text || "")));
         return frag;
       }
+      // Sanitize (drops scripts, event handlers, forms), then parse in an inert HTML document and
+      // import the nodes: the main window is XHTML, where HTML fragment parsing is not available.
       const flags = Ci.nsIParserUtils.SanitizerAllowStyle | Ci.nsIParserUtils.SanitizerDropForms;
-      const frag = Services.parserUtils.parseFragment(html, flags, false, null, contextElement || doc.documentElement);
+      const parserUtils = Cc["@mozilla.org/parserutils;1"].getService(Ci.nsIParserUtils);
+      const clean = parserUtils.sanitize(html, flags);
+      const parsed = new doc.defaultView.DOMParser().parseFromString(clean, "text/html");
+      const frag = doc.createDocumentFragment();
+      for (const node of [...parsed.body.childNodes]) {
+        frag.append(doc.importNode(node, true));
+      }
       return frag;
     },
 

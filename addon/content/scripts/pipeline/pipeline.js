@@ -64,7 +64,10 @@ DeepRead.Pipeline = class Pipeline {
 
   /** The ported code reads the PDF viewer through `this._primaryView._iframeWindow.PDFViewerApplication`. */
   get _primaryView() {
-    return { _iframeWindow: { PDFViewerApplication: this._getPdfApp() } };
+    const app = this._getPdfApp();
+    // `_pages[i].originalPage.viewport` mirrors the reader's Page objects that the ported
+    // geometry helpers read (served from the adapter's synchronous geometry cache).
+    return { _iframeWindow: { PDFViewerApplication: app }, _pages: app?.pdfViewer?._pages || [] };
   }
 
   _updateState(patch) {
@@ -2634,10 +2637,13 @@ Return only the JSON array, no other explanation. If nothing to filter, return e
     originalPDFHeight = originalViewBox[3] - originalViewBox[1];
 
     // 将千分比转换为原始PDF坐标系
-    const x0_original = x0_permille / 1000 * originalPDFWidth;
-    const x1_original = x1_permille / 1000 * originalPDFWidth;
-    const y0_original = (1 - y0_permille / 1000) * originalPDFHeight;
-    const y1_original = (1 - y1_permille / 1000) * originalPDFHeight;
+    // DeepRead: include the view box origin (cropped pages do not start at 0,0).
+    const originX = originalViewBox[0] || 0;
+    const originY = originalViewBox[1] || 0;
+    const x0_original = originX + x0_permille / 1000 * originalPDFWidth;
+    const x1_original = originX + x1_permille / 1000 * originalPDFWidth;
+    const y0_original = originY + (1 - y0_permille / 1000) * originalPDFHeight;
+    const y1_original = originY + (1 - y1_permille / 1000) * originalPDFHeight;
 
     // 🔄 坐标系转换：MinerU(左上右下) → PDF(左下右上)
     // MinerU: y0在上边界, y1在下边界
@@ -5174,6 +5180,11 @@ Output (if target language is English):
       percent: 40,
       message: this._l10n('reader-flow-extracting-text')
     });
+
+    // Synchronous page geometry for the ported helpers (getPageView(i).viewport, _pages).
+    if (typeof pdfApp.prepareGeometry === 'function') {
+      await pdfApp.prepareGeometry();
+    }
 
     // 3. structured chars of the included pages
     const charsDataList = [];

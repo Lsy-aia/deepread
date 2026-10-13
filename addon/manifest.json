@@ -12,7 +12,9 @@
     "zotero": {
       "id": "deepread@lsy-aia.github.io",
       "strict_min_version": "7.0",
-      "strict_max_version": "10.*"
+      "strict_max_version": "10.9.9",
+      "update_url": "https://github.com/Lsy-aia/zotero-deepread/releases/download/release/update.json"
     }
-  }
+  },
+  "homepage_url": "https://github.com/Lsy-aia/zotero-deepread"
 }

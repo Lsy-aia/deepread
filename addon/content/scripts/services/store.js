@@ -17,6 +17,12 @@ DeepRead.Store = {
 
   async init() {
     this.db = new Zotero.DBConnection("deepread");
+    // Close cleanly on app quit: Zotero treats a leftover -wal file as an unclean shutdown and
+    // runs a blocking integrity check (with a progress popup) on the next start.
+    if (!this._shutdownListenerAdded) {
+      this._shutdownListenerAdded = true;
+      Zotero.addShutdownListener(() => this.close());
+    }
     await this.db.queryAsync(`CREATE TABLE IF NOT EXISTS version (
       schema TEXT PRIMARY KEY,
       version INT NOT NULL
