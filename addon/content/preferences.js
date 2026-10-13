@@ -57,16 +57,6 @@
     if (s) s.hidden = !selfhost;
   }
 
-  function wireToggle(btnId, inputId) {
-    var btn = $(btnId);
-    var input = $(inputId);
-    if (!btn || !input) return;
-    btn.addEventListener("command", function () {
-      var show = input.type === "password";
-      input.type = show ? "text" : "password";
-      btn.setAttribute("data-l10n-id", show ? "deepread-pref-hide" : "deepread-pref-show");
-    });
-  }
 
   function wireTest(btnId, statusId, getTarget) {
     var btn = $(btnId);
@@ -116,9 +106,6 @@
       });
     }
 
-    wireToggle("deepread-pref-llm-apikey-toggle", "deepread-pref-llm-apikey");
-    wireToggle("deepread-pref-parser-mineru-token-toggle", "deepread-pref-parser-mineru-token");
-    wireToggle("deepread-pref-parser-selfhost-token-toggle", "deepread-pref-parser-selfhost-token");
 
     var provider = $("deepread-pref-parser-provider");
     if (provider) {
@@ -138,11 +125,18 @@
     });
   }
 
-  if (document.readyState === "complete") {
-    init();
-  } else {
-    window.addEventListener("load", init, { once: true });
-  }
-  // Pane fragments are inserted after window load; also try shortly after.
-  setTimeout(init, 0);
+  // Zotero loads this script before inserting the pane fragment, then dispatches a
+  // (non-bubbling) "load" event on the pane root: catch it in the capture phase.
+  document.addEventListener("load", function (event) {
+    if (event.target && event.target.id === "deepread-pref-root") init();
+  }, true);
+  // Fallback: poll briefly in case the event was missed.
+  var tries = 0;
+  (function poll() {
+    if ($("deepread-pref-root")) {
+      init();
+      return;
+    }
+    if (++tries < 50) setTimeout(poll, 100);
+  })();
 })();

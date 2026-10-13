@@ -374,9 +374,12 @@
       if (!text) return;
       const box = this._addRect(ctx.transient, ctx.geom, paragraph.bbox, "dr-translation");
       box.textContent = text;
-      // Shrink the font until the translation fits the original paragraph box.
+      // Start from the original line height (so it reads like the paper), then shrink to fit.
       const height = box.clientHeight;
-      let size = Math.max(9, Math.min(22, ctx.geom.div.clientWidth / 60));
+      const scale = Math.hypot(ctx.geom.t[0], ctx.geom.t[1]) * (ctx.geom.div.clientWidth / ctx.geom.w);
+      const lineHeights = paragraph.rects.map((r) => Math.abs(r[3] - r[1])).filter((v) => v > 2).sort((a, b) => a - b);
+      const lineHeight = lineHeights.length ? lineHeights[Math.floor(lineHeights.length / 2)] : 10;
+      let size = Math.max(8, Math.min(28, lineHeight * scale * 1.0));
       for (let i = 0; i < 14; i++) {
         box.style.fontSize = `${size}px`;
         if (box.scrollHeight <= height + 1 || size <= 7) break;

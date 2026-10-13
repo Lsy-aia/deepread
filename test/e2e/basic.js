@@ -148,6 +148,24 @@ E2E.run = async function () {
   });
   await shot("reader-hover");
 
+  // Alt-hover: in-place translation over a body paragraph.
+  const bodyPage = hd.find((p) => p.pageIndex === 1) || target;
+  const bodyPara = bodyPage.paragraphs.find((x) => x.paragraphType === "text" && (x.points || []).length && (x.paragraphText || "").length > 300);
+  if (bodyPara) {
+    await session.navigateToParagraph({ ...bodyPara, pageIndex: bodyPage.pageIndex });
+    await sleep(1500);
+    overlay._hideCard(true);
+    overlay.altDown = true;
+    const altPara = [...(overlay.pages.get(bodyPage.pageIndex) || [])].find((p) => p.paragraphIndex === bodyPara.paragraphIndex);
+    overlay.hoverPara = altPara;
+    overlay._drawHover(altPara);
+    await sleep(300);
+    step("alt-translation", { boxes: overlay.pdfDoc.querySelectorAll(".dr-translation").length });
+    await shot("reader-alt-translation");
+    overlay.altDown = false;
+    overlay._clearTransient();
+  }
+
   // Chat (streamed from the fake LLM).
   session.askAI({ text: para.paragraphText?.slice(0, 200), pageIndex: target.pageIndex });
   await DR.ChatPane.send(session, "这段在讲什么？");
