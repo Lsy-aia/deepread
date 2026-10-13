@@ -10,6 +10,7 @@ pref("extensions.zotero.deepread.llm.extraHeaders", "");
 
 pref("extensions.zotero.deepread.parser.provider", "mineru");
 pref("extensions.zotero.deepread.parser.mineruToken", "");
+pref("extensions.zotero.deepread.parser.mineruBaseURL", "https://mineru.net");
 pref("extensions.zotero.deepread.parser.mineruModel", "pipeline");
 pref("extensions.zotero.deepread.parser.mineruLanguage", "en");
 pref("extensions.zotero.deepread.parser.mineruOCR", false);

@@ -1,0 +1,170 @@
+<vbox id="deepread-pref-root"
+	xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+	xmlns:html="http://www.w3.org/1999/xhtml">
+	<linkset>
+		<html:link rel="localization" href="deepread.ftl"/>
+	</linkset>
+
+	<vbox class="main-section">
+		<!-- LLM -->
+		<groupbox aria-labelledby="deepread-pref-llm-title">
+			<label><html:h2 id="deepread-pref-llm-title" data-l10n-id="deepread-pref-llm-title"/></label>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-llm-preset" control="deepread-pref-llm-preset"/>
+				<menulist id="deepread-pref-llm-preset" native="true">
+					<menupopup>
+						<menuitem label="DeepSeek" value="deepseek"/>
+						<menuitem label="阿里云百炼 / 通义" value="dashscope"/>
+						<menuitem label="智谱 GLM" value="zhipu"/>
+						<menuitem label="火山方舟 / 豆包" value="ark"/>
+						<menuitem label="硅基流动 SiliconFlow" value="siliconflow"/>
+						<menuitem label="OpenRouter" value="openrouter"/>
+						<menuitem label="OpenAI" value="openai"/>
+						<menuitem label="Ollama 本地" value="ollama"/>
+						<menuitem data-l10n-id="deepread-pref-llm-preset-custom" value="custom"/>
+					</menupopup>
+				</menulist>
+			</hbox>
+			<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-llm-preset-hint"/>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-llm-baseurl" control="deepread-pref-llm-baseurl"/>
+				<html:input id="deepread-pref-llm-baseurl" type="text" class="deepread-pref-input" preference="extensions.zotero.deepread.llm.baseURL"/>
+			</hbox>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-llm-apikey" control="deepread-pref-llm-apikey"/>
+				<html:input id="deepread-pref-llm-apikey" type="password" class="deepread-pref-input" autocomplete="off" preference="extensions.zotero.deepread.llm.apiKey"/>
+				<button id="deepread-pref-llm-apikey-toggle" data-l10n-id="deepread-pref-show"/>
+			</hbox>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-llm-model" control="deepread-pref-llm-model"/>
+				<html:input id="deepread-pref-llm-model" type="text" class="deepread-pref-input" preference="extensions.zotero.deepread.llm.model"/>
+			</hbox>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-llm-chatmodel" control="deepread-pref-llm-chatmodel"/>
+				<html:input id="deepread-pref-llm-chatmodel" type="text" class="deepread-pref-input" data-l10n-id="deepread-pref-llm-chatmodel-input" preference="extensions.zotero.deepread.llm.chatModel"/>
+			</hbox>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-llm-jsonmode" control="deepread-pref-llm-jsonmode"/>
+				<menulist id="deepread-pref-llm-jsonmode" native="true" preference="extensions.zotero.deepread.llm.jsonMode">
+					<menupopup>
+						<menuitem data-l10n-id="deepread-pref-llm-jsonmode-object" value="json_object"/>
+						<menuitem data-l10n-id="deepread-pref-llm-jsonmode-schema" value="json_schema"/>
+						<menuitem data-l10n-id="deepread-pref-llm-jsonmode-none" value="none"/>
+					</menupopup>
+				</menulist>
+			</hbox>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-llm-temperature" control="deepread-pref-llm-temperature"/>
+				<html:input id="deepread-pref-llm-temperature" type="text" inputmode="decimal" size="6" preference="extensions.zotero.deepread.llm.temperature"/>
+			</hbox>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-llm-concurrency" control="deepread-pref-llm-concurrency"/>
+				<html:input id="deepread-pref-llm-concurrency" type="number" min="1" max="64" step="1" size="6" preference="extensions.zotero.deepread.llm.concurrency"/>
+			</hbox>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-llm-extraheaders" control="deepread-pref-llm-extraheaders"/>
+				<html:input id="deepread-pref-llm-extraheaders" type="text" class="deepread-pref-input" placeholder="{&quot;X-Title&quot;: &quot;DeepRead&quot;}" preference="extensions.zotero.deepread.llm.extraHeaders"/>
+			</hbox>
+			<hbox align="center" class="deepread-pref-row">
+				<button id="deepread-pref-llm-test" data-l10n-id="deepread-pref-test"/>
+				<label id="deepread-pref-llm-status" class="deepread-pref-status" value=""/>
+			</hbox>
+		</groupbox>
+
+		<!-- Parser -->
+		<groupbox aria-labelledby="deepread-pref-parser-title">
+			<label><html:h2 id="deepread-pref-parser-title" data-l10n-id="deepread-pref-parser-title"/></label>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-parser-provider" control="deepread-pref-parser-provider"/>
+				<menulist id="deepread-pref-parser-provider" native="true" preference="extensions.zotero.deepread.parser.provider">
+					<menupopup>
+						<menuitem data-l10n-id="deepread-pref-parser-provider-mineru" value="mineru"/>
+						<menuitem data-l10n-id="deepread-pref-parser-provider-selfhost" value="selfhost"/>
+					</menupopup>
+				</menulist>
+			</hbox>
+
+			<vbox id="deepread-pref-parser-mineru">
+				<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-parser-mineru-hint"/>
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-parser-token" control="deepread-pref-parser-mineru-token"/>
+					<html:input id="deepread-pref-parser-mineru-token" type="password" class="deepread-pref-input" autocomplete="off" preference="extensions.zotero.deepread.parser.mineruToken"/>
+					<button id="deepread-pref-parser-mineru-token-toggle" data-l10n-id="deepread-pref-show"/>
+				</hbox>
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-parser-mineru-model" control="deepread-pref-parser-mineru-model"/>
+					<menulist id="deepread-pref-parser-mineru-model" native="true" preference="extensions.zotero.deepread.parser.mineruModel">
+						<menupopup>
+							<menuitem label="pipeline" value="pipeline"/>
+							<menuitem label="vlm" value="vlm"/>
+						</menupopup>
+					</menulist>
+				</hbox>
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-parser-mineru-language" control="deepread-pref-parser-mineru-language"/>
+					<html:input id="deepread-pref-parser-mineru-language" type="text" size="8" preference="extensions.zotero.deepread.parser.mineruLanguage"/>
+				</hbox>
+				<checkbox id="deepread-pref-parser-mineru-ocr" data-l10n-id="deepread-pref-parser-mineru-ocr" preference="extensions.zotero.deepread.parser.mineruOCR"/>
+				<checkbox id="deepread-pref-parser-mineru-formula" data-l10n-id="deepread-pref-parser-mineru-formula" preference="extensions.zotero.deepread.parser.mineruFormula"/>
+				<checkbox id="deepread-pref-parser-mineru-table" data-l10n-id="deepread-pref-parser-mineru-table" preference="extensions.zotero.deepread.parser.mineruTable"/>
+			</vbox>
+
+			<vbox id="deepread-pref-parser-selfhost">
+				<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-parser-selfhost-hint"/>
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-parser-selfhost-url" control="deepread-pref-parser-selfhost-url"/>
+					<html:input id="deepread-pref-parser-selfhost-url" type="text" class="deepread-pref-input" preference="extensions.zotero.deepread.parser.selfHostURL"/>
+				</hbox>
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-parser-selfhost-token" control="deepread-pref-parser-selfhost-token"/>
+					<html:input id="deepread-pref-parser-selfhost-token" type="password" class="deepread-pref-input" autocomplete="off" preference="extensions.zotero.deepread.parser.selfHostToken"/>
+					<button id="deepread-pref-parser-selfhost-token-toggle" data-l10n-id="deepread-pref-show"/>
+				</hbox>
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-parser-selfhost-backend" control="deepread-pref-parser-selfhost-backend"/>
+					<html:input id="deepread-pref-parser-selfhost-backend" type="text" class="deepread-pref-input" placeholder="pipeline / vlm-transformers / vlm-sglang-client / hybrid" preference="extensions.zotero.deepread.parser.selfHostBackend"/>
+				</hbox>
+			</vbox>
+
+			<hbox align="center" class="deepread-pref-row">
+				<button id="deepread-pref-parser-test" data-l10n-id="deepread-pref-test"/>
+				<label id="deepread-pref-parser-status" class="deepread-pref-status" value=""/>
+			</hbox>
+		</groupbox>
+
+		<!-- Reading -->
+		<groupbox aria-labelledby="deepread-pref-reading-title">
+			<label><html:h2 id="deepread-pref-reading-title" data-l10n-id="deepread-pref-reading-title"/></label>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-language" control="deepread-pref-language"/>
+				<menulist id="deepread-pref-language" native="true" preference="extensions.zotero.deepread.language">
+					<menupopup>
+						<menuitem label="简体中文" value="zh"/>
+						<menuitem label="繁體中文" value="zh-TW"/>
+						<menuitem label="English" value="en"/>
+						<menuitem label="日本語" value="ja"/>
+						<menuitem label="한국어" value="ko"/>
+						<menuitem label="Français" value="fr"/>
+						<menuitem label="Español" value="es"/>
+						<menuitem label="Deutsch" value="de"/>
+						<menuitem label="ภาษาไทย" value="th"/>
+					</menupopup>
+				</menulist>
+			</hbox>
+			<checkbox id="deepread-pref-filter-author" data-l10n-id="deepread-pref-filter-author" preference="extensions.zotero.deepread.filterAuthorBlocks"/>
+			<checkbox id="deepread-pref-view-highlights" data-l10n-id="deepread-pref-view-highlights" preference="extensions.zotero.deepread.view.highlights"/>
+			<checkbox id="deepread-pref-view-hovercards" data-l10n-id="deepread-pref-view-hovercards" preference="extensions.zotero.deepread.view.hoverCards"/>
+			<checkbox id="deepread-pref-view-translation" data-l10n-id="deepread-pref-view-translation" preference="extensions.zotero.deepread.view.translationPopup"/>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-chat-maxcontext" control="deepread-pref-chat-maxcontext"/>
+				<html:input id="deepread-pref-chat-maxcontext" type="number" min="1000" step="1000" size="10" preference="extensions.zotero.deepread.chat.maxContextChars"/>
+			</hbox>
+		</groupbox>
+
+		<!-- Privacy -->
+		<groupbox aria-labelledby="deepread-pref-privacy-title">
+			<label><html:h2 id="deepread-pref-privacy-title" data-l10n-id="deepread-pref-privacy-title"/></label>
+			<description data-l10n-id="deepread-pref-privacy-note"/>
+		</groupbox>
+	</vbox>
+</vbox>

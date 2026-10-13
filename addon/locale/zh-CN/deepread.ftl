@@ -1,0 +1,87 @@
+## DeepRead - 简体中文
+
+deepread-toolbar-run = AI 精读
+
+deepread-pane-summary-header =
+    .label = 速读卡
+deepread-pane-summary-sidenav =
+    .tooltiptext = 速读卡
+deepread-pane-outline-header =
+    .label = AI 大纲
+deepread-pane-outline-sidenav =
+    .tooltiptext = AI 大纲
+deepread-pane-chat-header =
+    .label = AI 对话
+deepread-pane-chat-sidenav =
+    .tooltiptext = AI 对话
+deepread-section-button-regenerate =
+    .tooltiptext = 重新生成
+deepread-section-button-clear-chat =
+    .tooltiptext = 清空对话
+
+## Preferences
+
+deepread-pref-show =
+    .label = 显示
+deepread-pref-hide =
+    .label = 隐藏
+deepread-pref-test =
+    .label = 测试连接
+
+deepread-pref-llm-title = 大模型 (LLM)
+deepread-pref-llm-preset = 服务预设
+deepread-pref-llm-preset-custom =
+    .label = 自定义
+deepread-pref-llm-preset-hint = 选择预设会自动填入接口地址和模型名，随后请填写 API Key。支持任何 OpenAI 兼容接口。
+deepread-pref-llm-baseurl = 接口地址
+deepread-pref-llm-apikey = API Key
+deepread-pref-llm-model = 模型
+deepread-pref-llm-chatmodel = 对话模型
+deepread-pref-llm-chatmodel-input =
+    .placeholder = 留空则同上
+deepread-pref-llm-jsonmode = JSON 模式
+deepread-pref-llm-jsonmode-object =
+    .label = json_object（兼容性最好）
+deepread-pref-llm-jsonmode-schema =
+    .label = json_schema（严格结构，需服务支持）
+deepread-pref-llm-jsonmode-none =
+    .label = none（不发送 response_format）
+deepread-pref-llm-temperature = 温度
+deepread-pref-llm-concurrency = 并发数 (1–64)
+deepread-pref-llm-extraheaders = 额外请求头 (JSON，可选)
+
+deepread-pref-parser-title = PDF 结构解析
+deepread-pref-parser-provider = 解析服务
+deepread-pref-parser-provider-mineru =
+    .label = MinerU 官方 API
+deepread-pref-parser-provider-selfhost =
+    .label = 自建 / 第三方 MinerU 兼容服务
+deepread-pref-parser-mineru-hint = 请在 https://mineru.net/apiManage 申请 Token。
+deepread-pref-parser-token = Token
+deepread-pref-parser-mineru-model = 解析模型
+deepread-pref-parser-mineru-language = 文档语言
+deepread-pref-parser-mineru-ocr =
+    .label = 启用 OCR
+deepread-pref-parser-mineru-formula =
+    .label = 识别公式
+deepread-pref-parser-mineru-table =
+    .label = 识别表格
+deepread-pref-parser-selfhost-hint = 填写 mineru-api 或兼容服务的地址（POST 地址/file_parse）。
+deepread-pref-parser-selfhost-url = 服务地址
+deepread-pref-parser-selfhost-token = Token（可选）
+deepread-pref-parser-selfhost-backend = 后端
+
+deepread-pref-reading-title = 阅读
+deepread-pref-language = 输出语言
+deepread-pref-filter-author =
+    .label = 过滤作者/单位信息块
+deepread-pref-view-highlights =
+    .label = 在 PDF 中显示高亮
+deepread-pref-view-hovercards =
+    .label = 悬停显示要点卡片
+deepread-pref-view-translation =
+    .label = 显示翻译弹窗
+deepread-pref-chat-maxcontext = 对话最大上下文字符数
+
+deepread-pref-privacy-title = 隐私
+deepread-pref-privacy-note = API Key 仅保存在本机的 Zotero 设置中；PDF 内容只会发送到您在此处配置的服务。

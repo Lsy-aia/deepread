@@ -1,0 +1,537 @@
+/*
+ * One Session per open PDF reader: loads cached results, runs the pipeline, owns the overlay,
+ * and notifies panes/toolbar through a tiny listener API.
+ *
+ * License: AGPL-3.0-or-later
+ */
+/* global DeepRead, Zotero, Components */
+
+(function () {
+  const sessions = new Map(); // ReaderInstance → Session
+  let notifierID = null;
+
+  function waived(obj) {
+    return obj?.wrappedJSObject || obj;
+  }
+
+  /**
+   * Chrome-side facade over the reader's pdf.js objects. Arguments are cloned into the content
+   * compartment and page data is copied out as plain JSON (much faster to iterate than x-rays).
+   */
+  function createPdfAdapter(view) {
+    const win = view._iframeWindow;
+    const app = waived(win).PDFViewerApplication;
+    const clone = (value) => Components.utils.cloneInto(value, win);
+    const copyOut = (value) => JSON.parse(win.JSON.stringify(value));
+    const doc = app.pdfDocument;
+    return {
+      pdfDocument: {
+        get numPages() {
+          return doc.numPages;
+        },
+        async getPageData(params) {
+          return copyOut(await doc.getPageData(clone({ pageIndex: params.pageIndex })));
+        },
+        async getPage(pageNumber) {
+          const page = await doc.getPage(pageNumber);
+          return {
+            view: Array.from(page.view),
+            rotate: page.rotate,
+            getViewport(params) {
+              const viewport = page.getViewport(clone({ scale: params?.scale ?? 1 }));
+              return {
+                width: viewport.width,
+                height: viewport.height,
+                viewBox: Array.from(viewport.viewBox),
+                originalViewBox: viewport.originalViewBox ? Array.from(viewport.originalViewBox) : undefined,
+                transform: Array.from(viewport.transform),
+              };
+            },
+          };
+        },
+        async getOutline() {
+          const outline = await doc.getOutline();
+          return outline ? copyOut(outline) : null;
+        },
+      },
+      pdfViewer: {
+        get pagesCount() {
+          return app.pdfViewer.pagesCount;
+        },
+        get currentScale() {
+          return app.pdfViewer.currentScale;
+        },
+      },
+    };
+  }
+
+  DeepRead.Session = class Session {
+    static forReader(reader) {
+      if (!reader || reader.type !== "pdf") return null;
+      let session = sessions.get(reader);
+      if (!session) {
+        session = new Session(reader);
+        sessions.set(reader, session);
+        Session._ensureNotifier();
+      }
+      return session;
+    }
+
+    static forWindow(win) {
+      const tabID = win?.Zotero_Tabs?.selectedID;
+      if (!tabID) return null;
+      const reader = Zotero.Reader.getByTabID(tabID);
+      return reader ? Session.forReader(reader) : null;
+    }
+
+    static forEachOverlay(fn) {
+      for (const session of sessions.values()) fn(session.overlay);
+    }
+
+    static destroyAll() {
+      for (const session of sessions.values()) session.destroy();
+      sessions.clear();
+      if (notifierID) {
+        Zotero.Notifier.unregisterObserver(notifierID);
+        notifierID = null;
+      }
+    }
+
+    static _ensureNotifier() {
+      if (notifierID) return;
+      notifierID = Zotero.Notifier.registerObserver({
+        notify(event, type, ids) {
+          if (type !== "tab" || event !== "close") return;
+          for (const [reader, session] of sessions) {
+            if (ids.includes(reader.tabID)) {
+              session.destroy();
+              sessions.delete(reader);
+            }
+          }
+        },
+      }, ["tab"], "deepread");
+    }
+
+    constructor(reader) {
+      this.reader = reader;
+      this.status = "idle"; // idle | loading | running | ready | error
+      this.progress = { percent: 0, message: "" };
+      this.error = null;
+      this.data = null; // { hierarchicalData, articleSummary, blockMapping, sections, markdown, contentList, resultDir }
+      this.userState = { pointImportance: {} };
+      this.chat = null; // loaded lazily by the chat pane
+      this.pendingQuotes = [];
+      this.outlineStatus = "idle"; // idle | running | error
+      this.summaryStatus = "idle";
+      this._listeners = new Set();
+      this._abort = null;
+      this.overlay = new DeepRead.Overlay(this);
+    }
+
+    get item() {
+      return Zotero.Items.get(this.reader.itemID);
+    }
+
+    get key() {
+      return DeepRead.util.attachmentKey(this.item);
+    }
+
+    get parentItem() {
+      const item = this.item;
+      return item?.parentItemID ? Zotero.Items.get(item.parentItemID) : item;
+    }
+
+    get hasResults() {
+      return !!this.data?.hierarchicalData?.length;
+    }
+
+    on(listener) {
+      this._listeners.add(listener);
+      return () => this._listeners.delete(listener);
+    }
+
+    _emit(event = "change", payload = null) {
+      for (const listener of [...this._listeners]) {
+        try {
+          listener(event, payload, this);
+        }
+        catch (e) {
+          DeepRead.log("listener failed", String(e));
+        }
+      }
+    }
+
+    /** Idempotent: wait for the PDF view, attach overlay, load cached results. */
+    init() {
+      if (!this._initPromise) {
+        this._initPromise = this._init().catch((e) => {
+          DeepRead.log("session init failed", String(e));
+          this._initPromise = null;
+        });
+      }
+      return this._initPromise;
+    }
+
+    async _init() {
+      this.status = "loading";
+      this._emit();
+      await this.reader._initPromise;
+      const internal = waived(this.reader._internalReader);
+      const view = internal?._primaryView;
+      if (!view) throw new Error("no primary view");
+      await view.initializedPromise;
+      this.view = view;
+
+      const stored = await DeepRead.Store.getPaper(this.key);
+      if (stored?.hierarchical_data) {
+        this.data = {
+          hierarchicalData: stored.hierarchical_data,
+          articleSummary: stored.article_summary,
+          blockMapping: stored.block_mapping,
+          sections: stored.sections,
+          markdown: stored.markdown || "",
+          contentList: stored.content_list,
+          resultDir: stored.result_dir,
+          language: stored.language,
+        };
+        this.userState = { pointImportance: {}, ...(stored.user_state || {}) };
+        this.status = "ready";
+      }
+      else {
+        this.status = "idle";
+      }
+      this.overlay.attach(view);
+      if (this.data) this.overlay.setData(this.data.hierarchicalData);
+      this._emit();
+    }
+
+    destroy() {
+      this.cancel();
+      this.overlay.detach();
+      this._listeners.clear();
+    }
+
+    pdfAdapter() {
+      return createPdfAdapter(this.view);
+    }
+
+    /* ---------- configuration checks ---------- */
+
+    _checkConfig({ parser = true } = {}) {
+      if (!DeepRead.LLM.isConfigured()) {
+        throw Object.assign(new Error(DeepRead.t("error.noLLM")), { configError: true });
+      }
+      if (parser && !DeepRead.Parser.isConfigured()) {
+        throw Object.assign(new Error(DeepRead.t("error.noParser")), { configError: true });
+      }
+    }
+
+    _newPipeline(signal, onProgress) {
+      return new DeepRead.Pipeline({
+        getPdfApp: () => this.pdfAdapter(),
+        llm: (options) => DeepRead.LLM.complete({ ...options, signal: options.signal || signal }),
+        parsePDF: async ({ onStatus } = {}) => {
+          const filePath = await this.item.getFilePathAsync();
+          if (!filePath) throw new Error(DeepRead.bilingual("找不到 PDF 文件", "PDF file not found"));
+          return DeepRead.Parser.parsePDF({ filePath, attachmentKey: this.key, onStatus, signal });
+        },
+        onProgress: onProgress || (() => {}),
+        notify: (message, type) => this._notify(message, type),
+        language: DeepRead.prefs.language(),
+        paperTitle: this.parentItem?.getField?.("title") || "",
+        concurrency: DeepRead.prefs.llmConfig().concurrency,
+        filterAuthors: DeepRead.prefs.get("filterAuthorBlocks") !== false,
+        signal,
+      });
+    }
+
+    _notify(message, type = "info") {
+      DeepRead.log(`[${type}] ${message}`);
+      this._emit("notify", { message, type });
+    }
+
+    _setProgress(next) {
+      this.progress = {
+        percent: typeof next.percent === "number" ? next.percent : this.progress.percent,
+        message: next.message ?? this.progress.message,
+      };
+      this._emit("progress");
+    }
+
+    /* ---------- main flow ---------- */
+
+    async run() {
+      if (this.status === "running") {
+        this._notify(DeepRead.t("flow.busy"), "warning");
+        return false;
+      }
+      await this.init();
+      if (this.item?.attachmentContentType !== "application/pdf") {
+        throw new Error(DeepRead.t("error.notPDF"));
+      }
+      this._checkConfig();
+
+      const controller = new AbortController();
+      this._abort = controller;
+      this.status = "running";
+      this.error = null;
+      this.progress = { percent: 1, message: DeepRead.t("flow.start") };
+      this._emit();
+      try {
+        const pipeline = this._newPipeline(controller.signal, (p) => this._setProgress(p));
+        const result = await pipeline.run();
+        this._setProgress({ percent: 97, message: DeepRead.t("flow.saving") });
+        const data = {
+          hierarchicalData: DeepRead.Session.compactHierarchicalData(result.hierarchicalData),
+          articleSummary: result.articleSummary?.article_summary ?? result.articleSummary ?? null,
+          blockMapping: result.blockMapping || null,
+          sections: null,
+          markdown: result.markdown || "",
+          contentList: result.contentList || null,
+          resultDir: result.resultDir || null,
+          language: DeepRead.prefs.language(),
+        };
+        await DeepRead.Store.savePaper(this.key, this.item.id, {
+          result_dir: data.resultDir,
+          language: data.language,
+          content_list: data.contentList,
+          hierarchical_data: data.hierarchicalData,
+          article_summary: data.articleSummary,
+          block_mapping: data.blockMapping,
+          sections: null,
+          markdown: data.markdown,
+          user_state: { pointImportance: {} },
+        });
+        this.data = data;
+        this.userState = { pointImportance: {} };
+        this.overlay.setData(data.hierarchicalData);
+        this.status = "ready";
+        this.progress = { percent: 100, message: DeepRead.t("flow.done") };
+        this._emit();
+        return true;
+      }
+      catch (error) {
+        const aborted = controller.signal.aborted || error?.name === "AbortError";
+        this.status = this.data ? "ready" : "idle";
+        this.error = aborted ? null : error;
+        this.progress = {
+          percent: 0,
+          message: aborted ? DeepRead.t("flow.cancelled") : DeepRead.t("flow.failed", { error: DeepRead.util.formatError(error) }),
+        };
+        if (!aborted) {
+          DeepRead.log("run failed", error?.stack || String(error));
+          this.status = this.data ? "ready" : "error";
+        }
+        this._emit();
+        if (!aborted) throw error;
+        return false;
+      }
+      finally {
+        this._abort = null;
+      }
+    }
+
+    cancel() {
+      this._abort?.abort();
+    }
+
+    _pipelineWithState(signal) {
+      const pipeline = this._newPipeline(signal);
+      pipeline.loadState({
+        resultDir: this.data.resultDir,
+        contentList: this.data.contentList,
+        markdown: this.data.markdown,
+        hierarchicalData: this.data.hierarchicalData,
+        articleSummary: this.data.articleSummary,
+        blockMapping: this.data.blockMapping,
+        sections: this.data.sections,
+      });
+      return pipeline;
+    }
+
+    async generateOutline() {
+      await this.init();
+      if (!this.hasResults) throw new Error(DeepRead.t("error.noParseData"));
+      this._checkConfig({ parser: false });
+      this.outlineStatus = "running";
+      this._emit();
+      try {
+        const pipeline = this._pipelineWithState(undefined);
+        const outline = await pipeline.generateOutline();
+        this.data.sections = outline;
+        if (!this.data.blockMapping) this.data.blockMapping = pipeline.getState().blockMapping;
+        await DeepRead.Store.savePaper(this.key, this.item.id, {
+          sections: outline,
+          block_mapping: this.data.blockMapping,
+        });
+        this.outlineStatus = "idle";
+        this._emit();
+        return outline;
+      }
+      catch (error) {
+        this.outlineStatus = "error";
+        this.outlineError = DeepRead.util.formatError(error);
+        this._emit();
+        throw error;
+      }
+    }
+
+    async regenerateSummary() {
+      await this.init();
+      if (!this.hasResults) throw new Error(DeepRead.t("error.noParseData"));
+      this._checkConfig({ parser: false });
+      this.summaryStatus = "running";
+      this._emit();
+      try {
+        const pipeline = this._pipelineWithState(undefined);
+        const result = await pipeline.regenerateArticleSummary();
+        this.data.articleSummary = result.articleSummary?.article_summary ?? result.articleSummary;
+        if (result.blockMapping) this.data.blockMapping = result.blockMapping;
+        await DeepRead.Store.savePaper(this.key, this.item.id, {
+          article_summary: this.data.articleSummary,
+          block_mapping: this.data.blockMapping,
+        });
+        this.summaryStatus = "idle";
+        this._emit();
+      }
+      catch (error) {
+        this.summaryStatus = "error";
+        this.summaryError = DeepRead.util.formatError(error);
+        this._emit();
+        throw error;
+      }
+    }
+
+    async clearResults() {
+      this.cancel();
+      await DeepRead.Store.deletePaper(this.key);
+      this.data = null;
+      this.chat = null;
+      this.userState = { pointImportance: {} };
+      this.status = "idle";
+      this.progress = { percent: 0, message: "" };
+      this.overlay.setData([]);
+      this._emit();
+    }
+
+    /* ---------- user state ---------- */
+
+    pointLevel(point) {
+      const override = this.userState.pointImportance?.[point.id];
+      return Number(override || point.importance_level || 1);
+    }
+
+    setPointImportance(pointId, level) {
+      this.userState.pointImportance = { ...(this.userState.pointImportance || {}), [pointId]: level };
+      this.overlay.renderAllPages();
+      clearTimeout(this._saveUserStateTimer);
+      this._saveUserStateTimer = setTimeout(() => {
+        DeepRead.Store.savePaper(this.key, this.item.id, { user_state: this.userState })
+          .catch((e) => DeepRead.log("saving user state failed", String(e)));
+      }, 500);
+    }
+
+    /* ---------- navigation ---------- */
+
+    _allParagraphs() {
+      const out = [];
+      for (const page of this.data?.hierarchicalData || []) {
+        for (const paragraph of page.paragraphs || []) {
+          out.push({ ...paragraph, pageIndex: page.pageIndex });
+        }
+      }
+      return out;
+    }
+
+    findParagraphByMinerUid(uid) {
+      if (uid === undefined || uid === null) return null;
+      return this._allParagraphs().find((p) => String(p.minerUid) === String(uid)) || null;
+    }
+
+    _blockByID(blockId) {
+      for (const section of this.data?.blockMapping || []) {
+        for (const block of section.blocks || []) {
+          if (String(block.block_id) === String(blockId)) return block;
+        }
+      }
+      return null;
+    }
+
+    _titleBlock(titleBlockId) {
+      return (this.data?.blockMapping || []).find((s) => String(s.title_block_id) === String(titleBlockId)) || null;
+    }
+
+    async navigateToParagraph(paragraph) {
+      if (!paragraph) return false;
+      const rects = paragraph.rects?.length ? paragraph.rects : null;
+      const position = rects
+        ? { pageIndex: paragraph.pageIndex, rects: [DeepRead.Overlay.unionRect(rects)] }
+        : { pageIndex: paragraph.pageIndex ?? paragraph.page_idx ?? 0, rects: [[0, 0, 1, 1]] };
+      await this.reader.navigate({ position });
+      if (rects) this.overlay.flash(paragraph);
+      return true;
+    }
+
+    async navigateToBlockIds(blockIds) {
+      for (const id of blockIds || []) {
+        const block = this._blockByID(id);
+        const paragraph = block && this.findParagraphByMinerUid(block.minerUid);
+        if (paragraph) return this.navigateToParagraph(paragraph);
+        if (block?.page_idx !== undefined) {
+          await this.reader.navigate({ pageIndex: block.page_idx });
+          return true;
+        }
+      }
+      return false;
+    }
+
+    async navigateToTitleBlock(titleBlockId) {
+      const title = this._titleBlock(titleBlockId);
+      const paragraph = title && this.findParagraphByMinerUid(title.minerUid);
+      if (paragraph) return this.navigateToParagraph(paragraph);
+      if (title?.page_idx !== undefined) {
+        await this.reader.navigate({ pageIndex: title.page_idx });
+        return true;
+      }
+      return false;
+    }
+
+    /* ---------- AI chat bridge ---------- */
+
+    askAI({ text, pageIndex }) {
+      const quote = String(text || "").trim();
+      if (quote) this.pendingQuotes.push({ text: quote.slice(0, 8000), pageIndex });
+      this._emit("ask");
+      DeepRead.Panes.reveal(this.reader, "chat");
+    }
+
+    /**
+     * Strip bulky per-character mappings before persisting; overlays only need rects.
+     */
+    static compactHierarchicalData(hierarchicalData) {
+      return (hierarchicalData || []).map((page) => ({
+        pageIndex: page.pageIndex,
+        paragraphs: (page.paragraphs || []).map((p) => ({
+          paragraphIndex: p.paragraphIndex,
+          paragraphType: p.paragraphType,
+          paragraphText: p.paragraphText,
+          paragraphSummary: p.paragraphSummary,
+          minerUid: p.minerUid,
+          importance_level: p.importance_level,
+          bbox: p.bbox,
+          rects: p.rects,
+          sentences: (p.sentences || []).map((s) => ({ id: s.id, sentenceIndex: s.sentenceIndex, text: s.text, rects: s.rects })),
+          points: (p.points || []).map((pt) => ({
+            id: pt.id,
+            pointIndex: pt.pointIndex,
+            sentenceIndices: pt.sentenceIndices,
+            summary: pt.summary,
+            translation: pt.translation,
+            rects: pt.rects,
+            importance_level: pt.importance_level,
+          })),
+        })),
+      }));
+    }
+  };
+})();

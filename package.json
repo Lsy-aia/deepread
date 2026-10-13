@@ -1,0 +1,16 @@
+{
+  "name": "zotero-deepread",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DeepRead: AI reading assistant plugin for Zotero 7-10",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "vendor": "node scripts/vendor.mjs",
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "katex": "0.16.47",
+    "marked": "18.0.14"
+  }
+}

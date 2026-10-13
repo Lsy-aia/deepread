@@ -40,10 +40,11 @@
     DeepRead.log(`starting ${DeepRead.version}`);
     await DeepRead.Store.init();
 
-    Zotero.PreferencePanes.register({
+    DeepRead.prefPaneID = await Zotero.PreferencePanes.register({
       pluginID: PLUGIN_ID,
       src: `${DeepRead.rootURI}content/preferences.xhtml`,
       scripts: [`${DeepRead.rootURI}content/preferences.js`],
+      stylesheets: [`${DeepRead.rootURI}content/styles/preferences.css`],
       label: "DeepRead",
       image: `${DeepRead.rootURI}content/icons/deepread.svg`,
     });
@@ -61,7 +62,8 @@
     if (windows.has(win)) return;
     windows.add(win);
     win.MozXULElement.insertFTLIfNeeded("deepread.ftl");
-    DeepRead.util.injectStylesheet(win.document, `${DeepRead.rootURI}content/styles/panes.css`, "deepread-panes-css");
+    DeepRead.util.injectStylesheet(win.document, "chrome://deepread/content/styles/panes.css", "deepread-panes-css");
+    DeepRead.util.injectStylesheet(win.document, "chrome://deepread/content/lib/katex/katex.min.css", "deepread-katex-css");
   };
 
   DeepRead.onMainWindowUnload = function (win) {
@@ -73,6 +75,7 @@
     DeepRead.Session.destroyAll();
     for (const win of windows) {
       win.document.getElementById("deepread-panes-css")?.remove();
+      win.document.getElementById("deepread-katex-css")?.remove();
       win.document.querySelector('link[href="deepread.ftl"]')?.remove();
     }
     windows.clear();

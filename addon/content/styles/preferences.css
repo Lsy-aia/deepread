@@ -1,0 +1,7 @@
+.deepread-pref-status { margin-inline-start: 8px; }
+.deepread-pref-status.ok { color: #1a7f37; }
+.deepread-pref-status.error { color: #cf222e; }
+.deepread-pref-hint { color: GrayText; font-size: 0.9em; margin: 2px 0 6px; }
+.deepread-pref-row { margin-block: 3px; }
+.deepread-pref-row > label { min-width: 120px; }
+.deepread-pref-input { flex: 1; min-width: 0; }
