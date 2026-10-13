@@ -1,0 +1,6 @@
+node_modules/
+build/
+.port-src/
+*.xpi
+.test-profile/
+test/fixtures/
