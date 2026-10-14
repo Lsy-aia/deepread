@@ -158,6 +158,45 @@
 			</hbox>
 		</groupbox>
 
+		<!-- Full-document translation (ReadFlow) -->
+		<groupbox aria-labelledby="deepread-pref-readflow-title">
+			<label><html:h2 id="deepread-pref-readflow-title" data-l10n-id="deepread-pref-readflow-title"/></label>
+			<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-readflow-hint"/>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-readflow-baseurl" control="deepread-pref-readflow-baseurl"/>
+				<html:input id="deepread-pref-readflow-baseurl" type="text" class="deepread-pref-input" placeholder="http://127.0.0.1:41000" preference="extensions.zotero.deepread.readflow.baseURL"/>
+			</hbox>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-readflow-apikey" control="deepread-pref-readflow-apikey"/>
+				<html:input id="deepread-pref-readflow-apikey" type="password" class="deepread-pref-input" autocomplete="off" preference="extensions.zotero.deepread.readflow.apiKey"/>
+			</hbox>
+			<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-readflow-apikey-hint"/>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-readflow-mode" control="deepread-pref-readflow-mode"/>
+				<menulist id="deepread-pref-readflow-mode" native="true" preference="extensions.zotero.deepread.readflow.defaultMode">
+					<menupopup>
+						<menuitem data-l10n-id="deepread-pref-readflow-mode-dual" value="dual"/>
+						<menuitem data-l10n-id="deepread-pref-readflow-mode-inplace" value="inplace"/>
+					</menupopup>
+				</menulist>
+			</hbox>
+			<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-readflow-mode-hint"/>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-readflow-ocr" control="deepread-pref-readflow-ocr"/>
+				<menulist id="deepread-pref-readflow-ocr" native="true" preference="extensions.zotero.deepread.readflow.ocrProvider">
+					<menupopup>
+						<menuitem data-l10n-id="deepread-pref-readflow-ocr-local" value="local"/>
+						<menuitem label="MinerU" value="mineru"/>
+						<menuitem label="PaddleOCR" value="paddle"/>
+					</menupopup>
+				</menulist>
+			</hbox>
+			<hbox align="center" class="deepread-pref-row">
+				<button id="deepread-pref-readflow-test" data-l10n-id="deepread-pref-test"/>
+				<label id="deepread-pref-readflow-status" class="deepread-pref-status" value=""/>
+			</hbox>
+		</groupbox>
+
 		<!-- Reading -->
 		<groupbox aria-labelledby="deepread-pref-reading-title">
 			<label><html:h2 id="deepread-pref-reading-title" data-l10n-id="deepread-pref-reading-title"/></label>

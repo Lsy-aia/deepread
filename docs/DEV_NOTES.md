@@ -201,3 +201,26 @@ await DeepRead.GrobidParser.testConnection(config)                        // →
 ```
 Config: `parser.grobidURL` (default `http://127.0.0.1:8070`). `POST {url}/api/processFulltextDocument` with
 `teiCoordinates` for head, p, s, figure, formula, title; page sizes from `<facsimile><surface>`.
+
+## v0.4: full-document translation through ReadFlow (step 2)
+
+ReadFlow (our RetainPDF-based app, repo `~/Documents/LeoProjetcs/Retainpdf/readflow-maint/ReadFlow`) exposes a local
+Rust API (desktop app: `http://127.0.0.1:41000`, header `X-API-Key: retain-pdf-desktop` — a constant in ReadFlow's
+open-source `frontend/desktop/main.js`; the same API can be deployed with Docker). API docs: `backend/api/API_SPEC.md`
+and `backend/api/docs/api-spec/*.md` (jobs-submission, jobs-query, artifacts, credentials, runtime-and-events).
+DeepRead submits a `book` workflow job (OCR/normalize → translate → render) and saves the rendered PDF as a Zotero
+attachment. The user chooses the output per run: `"dual"` (side-by-side original | translation, render_mode `dual`)
+or `"inplace"` (translation typeset in place, render_mode `auto`). Translation uses **DeepRead's LLM settings**
+(`DeepRead.prefs.llmConfig()`: baseURL/model/apiKey).
+
+### DeepRead.ReadFlow — `services/readflow.js`
+```js
+DeepRead.ReadFlow.config()                     // { baseURL, apiKey, ocrProvider, defaultMode } from prefs readflow.*
+await DeepRead.ReadFlow.testConnection(cfg?)   // → { ok, message } (GET /health + an authenticated GET)
+await DeepRead.ReadFlow.translatePDF({ filePath, mode: "dual"|"inplace", sourceLang?, targetLang, onStatus, signal })
+//   → { pdfBytes: Uint8Array, jobId, fileName }  (upload → create job → poll → download PDF artifact)
+//   onStatus({ phase: "upload"|"queued"|"ocr"|"translate"|"render"|"download", percent, message })
+await DeepRead.ReadFlow.cancel(jobId)
+```
+Prefs: `readflow.baseURL` (default `http://127.0.0.1:41000`), `readflow.apiKey` (default `retain-pdf-desktop`),
+`readflow.ocrProvider` (default `"local"`), `readflow.defaultMode` (`"dual"`).

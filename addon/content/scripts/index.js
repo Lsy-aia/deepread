@@ -21,6 +21,7 @@
     "services/flashcards.js",
     "services/github.js",
     "services/deepwiki.js",
+    "services/readflow.js",
     "pipeline/languages.js",
     "pipeline/responseFormats.js",
     "pipeline/summaryManager.js",
@@ -39,7 +40,7 @@
   ];
 
   // Core modules must load; optional feature modules only log on failure.
-  const OPTIONAL = new Set(["services/github.js", "services/deepwiki.js", "panes/codePane.js", "panes/flashcardPane.js"]);
+  const OPTIONAL = new Set(["services/github.js", "services/deepwiki.js", "services/readflow.js", "panes/codePane.js", "panes/flashcardPane.js"]);
   for (const file of MODULES) {
     try {
       Services.scriptloader.loadSubScript(`${DeepRead.rootURI}content/scripts/${file}`, this);

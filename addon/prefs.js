@@ -33,3 +33,7 @@ pref("extensions.zotero.deepread.chat.maxContextChars", 120000);
 pref("extensions.zotero.deepread.github.token", "");
 pref("extensions.zotero.deepread.deepwiki.endpoint", "https://mcp.deepwiki.com/mcp");
 pref("extensions.zotero.deepread.lastVersion", "");
+pref("extensions.zotero.deepread.readflow.baseURL", "http://127.0.0.1:41000");
+pref("extensions.zotero.deepread.readflow.apiKey", "retain-pdf-desktop");
+pref("extensions.zotero.deepread.readflow.ocrProvider", "local");
+pref("extensions.zotero.deepread.readflow.defaultMode", "dual");

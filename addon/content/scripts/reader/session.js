@@ -238,6 +238,7 @@
 
     destroy() {
       this.cancel();
+      this.cancelTranslation();
       this.rail?.detach();
       this.overlay.detach();
       this._listeners.clear();
@@ -284,6 +285,100 @@
       const page = (this.data?.hierarchicalData || []).find((p) => p.pageIndex === pageIndex);
       const pageText = (page?.paragraphs || []).map((p) => p.paragraphText || "").join("\n\n").slice(0, 8000);
       return { title, abstract, pageText };
+    }
+
+    /* ---------- full-document translation (ReadFlow) ---------- */
+
+    static translationTitle(mode) {
+      return mode === "inplace"
+        ? DeepRead.bilingual("译文（原位）", "Translation (in place)")
+        : DeepRead.bilingual("译文（双栏对照）", "Translation (side by side)");
+    }
+
+    /** Existing translated attachment for this PDF and mode, if any. */
+    existingTranslation(mode) {
+      const parent = this.item?.parentItem;
+      if (!parent) return null;
+      const title = DeepRead.Session.translationTitle(mode);
+      return Zotero.Items.get(parent.getAttachments()).find((a) => a.isPDFAttachment() && a.getField("title") === title) || null;
+    }
+
+    async translateDocument(mode = DeepRead.prefs.get("readflow.defaultMode") || "dual") {
+      if (this.translation?.status === "running") {
+        this._notify(DeepRead.bilingual("这篇文献正在翻译中", "This document is already being translated"), "warning");
+        return null;
+      }
+      if (!DeepRead.ReadFlow) throw new Error("ReadFlow client unavailable");
+      if (!DeepRead.LLM.isConfigured()) {
+        throw Object.assign(new Error(DeepRead.t("error.noLLM")), { configError: true });
+      }
+      const filePath = await this.item.getFilePathAsync();
+      if (!filePath) throw new Error(DeepRead.bilingual("找不到 PDF 文件", "PDF file not found"));
+      const controller = new AbortController();
+      this.translation = { status: "running", mode, percent: 1, message: DeepRead.bilingual("连接 ReadFlow…", "Connecting to ReadFlow…"), controller };
+      this._emit("translation");
+      try {
+        const result = await DeepRead.ReadFlow.translatePDF({
+          filePath,
+          mode,
+          targetLang: DeepRead.prefs.language(),
+          signal: controller.signal,
+          onStatus: (status) => {
+            this.translation = { ...this.translation, percent: status.percent ?? this.translation.percent, message: status.message || this.translation.message, jobId: status.jobId || this.translation.jobId };
+            this._emit("translation");
+          },
+        });
+        this.translation = { ...this.translation, percent: 99, message: DeepRead.bilingual("保存译文附件…", "Saving the translated PDF…") };
+        this._emit("translation");
+        const attachment = await this._saveTranslation(result, mode);
+        this.translation = { status: "done", mode, percent: 100, message: DeepRead.bilingual("翻译完成", "Translation finished"), attachmentID: attachment.id };
+        this._emit("translation");
+        await Zotero.Reader.open(attachment.id);
+        return attachment;
+      }
+      catch (error) {
+        const aborted = controller.signal.aborted || error?.name === "AbortError";
+        this.translation = {
+          status: aborted ? "idle" : "error",
+          mode,
+          percent: 0,
+          message: aborted ? DeepRead.t("flow.cancelled") : DeepRead.util.formatError(error),
+        };
+        this._emit("translation");
+        if (!aborted) throw error;
+        return null;
+      }
+    }
+
+    cancelTranslation() {
+      const job = this.translation;
+      if (job?.status !== "running") return;
+      job.controller?.abort();
+      if (job.jobId) DeepRead.ReadFlow.cancel(job.jobId).catch((e) => DeepRead.log("ReadFlow cancel failed", String(e)));
+    }
+
+    async _saveTranslation(result, mode) {
+      const dir = PathUtils.join(PathUtils.tempDir, `deepread-${Date.now()}`);
+      await IOUtils.makeDirectory(dir, { createAncestors: true, ignoreExisting: true });
+      const base = (this.item.attachmentFilename || "paper.pdf").replace(/\.pdf$/i, "");
+      const suffix = mode === "inplace" ? DeepRead.bilingual("译文", "translated") : DeepRead.bilingual("双语对照", "bilingual");
+      const tmpPath = PathUtils.join(dir, `${base} - ${suffix}.pdf`);
+      await IOUtils.write(tmpPath, result.pdfBytes);
+      try {
+        const old = this.existingTranslation(mode);
+        const attachment = await Zotero.Attachments.importFromFile({
+          file: Zotero.File.pathToFile(tmpPath),
+          libraryID: this.item.libraryID,
+          parentItemID: this.item.parentItemID || undefined,
+          title: DeepRead.Session.translationTitle(mode),
+        });
+        // Replace an older translation of the same kind instead of piling up copies.
+        if (old && old.id !== attachment.id) await old.eraseTx();
+        return attachment;
+      }
+      finally {
+        await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
+      }
     }
 
     /* ---------- code repository ---------- */

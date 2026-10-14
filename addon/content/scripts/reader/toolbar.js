@@ -141,6 +141,50 @@
     doc.addEventListener("pointerdown", outside, true);
   }
 
+  function openTranslateMenu(session, doc, anchor) {
+    doc.querySelector(".deepread-menu")?.remove();
+    const defaultMode = DeepRead.prefs.get("readflow.defaultMode") === "inplace" ? "inplace" : "dual";
+    const close = () => {
+      menu.remove();
+      doc.removeEventListener("pointerdown", outside, true);
+    };
+    const outside = (e) => {
+      if (!menu.contains(e.target)) close();
+    };
+    const item = (label, action, marked = false) => h(doc, "button", {
+      onclick: (e) => {
+        e.stopPropagation();
+        close();
+        action();
+      },
+    }, h(doc, "span", { class: "dr-check" }, marked ? "•" : ""), label);
+    const start = (mode) => session.translateDocument(mode)
+      .then((attachment) => attachment && DeepRead.Toast.show(doc, DeepRead.bilingual("译文已保存为附件并打开", "Translated PDF saved and opened")))
+      .catch((error) => {
+        DeepRead.Toast.show(doc, DeepRead.util.formatError(error), "error");
+        if (error?.configError) DeepRead.openPreferences();
+      });
+    const entries = [];
+    for (const mode of ["dual", "inplace"]) {
+      const label = mode === "dual"
+        ? DeepRead.bilingual("整篇翻译 · 双栏对照（左原文·右译文）", "Translate · side by side")
+        : DeepRead.bilingual("整篇翻译 · 原位译文（保留排版）", "Translate · in place");
+      entries.push(item(label, () => start(mode), mode === defaultMode));
+      const existing = session.existingTranslation(mode);
+      if (existing) {
+        entries.push(item(DeepRead.bilingual(`打开已有${DeepRead.Session.translationTitle(mode)}`, `Open existing ${DeepRead.Session.translationTitle(mode)}`),
+          () => Zotero.Reader.open(existing.id)));
+      }
+    }
+    const menu = h(doc, "div", { class: "deepread-menu" }, ...entries, h(doc, "hr"),
+      item(DeepRead.bilingual("ReadFlow 与翻译设置…", "ReadFlow & translation settings…"), () => DeepRead.openPreferences()));
+    (doc.body || doc.documentElement).append(menu);
+    const r = anchor.getBoundingClientRect();
+    menu.style.left = `${Math.max(4, Math.min(r.left, doc.documentElement.clientWidth - menu.offsetWidth - 4))}px`;
+    menu.style.top = `${r.bottom + 4}px`;
+    doc.addEventListener("pointerdown", outside, true);
+  }
+
   function render(event) {
     const { reader, doc, append } = event;
     const session = DeepRead.Session.forReader(reader);
@@ -156,7 +200,30 @@
       title: DeepRead.t("toolbar.menu"),
       onclick: (e) => openMenu(session, doc, e.currentTarget),
     }, "▾");
-    const container = h(doc, "div", { class: "deepread-toolbar" }, runButton, menuButton);
+    const translateLabel = h(doc, "span", {}, DeepRead.bilingual("整篇翻译", "Translate"));
+    const translateProgress = h(doc, "div", { class: "dr-run-progress" });
+    const translateButton = h(doc, "button", {
+      class: "toolbar-button dr-run dr-translate",
+      onclick: (e) => {
+        if (session.translation?.status === "running") {
+          if (confirm(session.reader, DeepRead.bilingual("取消正在进行的整篇翻译？", "Cancel the running translation?"))) session.cancelTranslation();
+          return;
+        }
+        openTranslateMenu(session, doc, e.currentTarget);
+      },
+    }, translateLabel, translateProgress);
+    const container = h(doc, "div", { class: "deepread-toolbar" }, runButton, menuButton, translateButton);
+    const updateTranslate = () => {
+      const job = session.translation;
+      const running = job?.status === "running";
+      translateLabel.textContent = running
+        ? `${DeepRead.bilingual("翻译", "Translating")} ${Math.round(job.percent || 0)}%`
+        : DeepRead.bilingual("整篇翻译", "Translate");
+      translateButton.title = running
+        ? `${job.message || ""}\n${DeepRead.bilingual("点击取消", "Click to cancel")}`
+        : (job?.status === "error" ? job.message : DeepRead.bilingual("用 ReadFlow 生成保留排版的整篇译文", "Full, layout-preserving translation via ReadFlow"));
+      translateProgress.style.width = running ? `${Math.max(2, job.percent || 0)}%` : "0";
+    };
 
     const update = () => {
       const running = session.status === "running";
@@ -179,8 +246,10 @@
         return;
       }
       if (type === "change" || type === "progress") update();
+      if (type === "translation") updateTranslate();
     });
     update();
+    updateTranslate();
     append(container);
     session.init().then(update);
   }

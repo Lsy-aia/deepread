@@ -44,9 +44,9 @@ user_pref("extensions.zotero.debug.time", false);
 user_pref("extensions.logging.enabled", true);
 user_pref("browser.dom.window.dump.enabled", true);
 user_pref("devtools.console.stdout.chrome", true);
-user_pref("extensions.zotero.deepread.llm.baseURL", "http://127.0.0.1:18766/v1");
+user_pref("extensions.zotero.deepread.llm.baseURL", "${E2E_LLM_URL:-http://127.0.0.1:18766/v1}");
 user_pref("extensions.zotero.deepread.llm.apiKey", "test-key");
-user_pref("extensions.zotero.deepread.llm.model", "fake");
+user_pref("extensions.zotero.deepread.llm.model", "${E2E_LLM_MODEL:-fake}");
 user_pref("extensions.zotero.deepread.llm.jsonMode", "${E2E_JSON_MODE:-json_object}");
 user_pref("extensions.zotero.deepread.parser.provider", "${E2E_PARSER:-selfhost}");
 user_pref("extensions.zotero.deepread.parser.selfHostURL", "http://127.0.0.1:18765");
@@ -54,6 +54,8 @@ user_pref("extensions.zotero.deepread.parser.mineruBaseURL", "http://127.0.0.1:1
 user_pref("extensions.zotero.deepread.parser.mineruToken", "test-token");
 user_pref("extensions.zotero.deepread.language", "${E2E_LANG:-zh}");
 user_pref("extensions.zotero.deepread.debug", ${E2E_DEBUG:-false});
+user_pref("extensions.zotero.deepread.readflow.baseURL", "${E2E_READFLOW_URL:-http://127.0.0.1:41999}");
+user_pref("extensions.zotero.deepread.readflow.apiKey", "retain-pdf-desktop");
 EOF
 # Force the add-on manager to rescan proxy files on startup.
 [ -f "$PROFILE/prefs.js" ] && sed -i '/extensions.lastAppBuildId/d;/extensions.lastAppVersion/d' "$PROFILE/prefs.js"
@@ -65,6 +67,9 @@ if ! curl -s -o /dev/null "http://127.0.0.1:18765/docs"; then
 fi
 if ! curl -s -o /dev/null "http://127.0.0.1:18766/v1/models"; then
   nohup node "$REPO/test/fake-openai.mjs" --port 18766 ${FAKE_OPENAI_ARGS:-} > "$BASE/fake-openai.log" 2>&1 &
+fi
+if [ -f "$REPO/test/fake-readflow.mjs" ] && ! curl -s -o /dev/null "http://127.0.0.1:41999/health"; then
+  nohup node "$REPO/test/fake-readflow.mjs" --port 41999 > "$BASE/fake-readflow.log" 2>&1 &
 fi
 sleep 0.5
 

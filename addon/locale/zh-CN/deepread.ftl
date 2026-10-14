@@ -78,6 +78,21 @@ deepread-pref-parser-selfhost-url = 服务地址
 deepread-pref-parser-selfhost-token = Token（可选）
 deepread-pref-parser-selfhost-backend = 后端
 
+deepread-pref-readflow-title = 整篇翻译（ReadFlow）
+deepread-pref-readflow-hint = 通过本机的 ReadFlow 服务生成保留排版的整篇译文 PDF，并保存为条目附件。翻译使用上方「大模型」的设置。使用前请先打开 ReadFlow（或部署其后端服务）。
+deepread-pref-readflow-baseurl = 服务地址
+deepread-pref-readflow-apikey = API Key
+deepread-pref-readflow-apikey-hint = ReadFlow 桌面版默认是 retain-pdf-desktop；自行部署的服务填写你设置的 Key。
+deepread-pref-readflow-mode = 默认输出
+deepread-pref-readflow-mode-dual =
+    .label = 双栏对照（左原文·右译文）
+deepread-pref-readflow-mode-inplace =
+    .label = 原位译文（保留排版）
+deepread-pref-readflow-mode-hint = 每次翻译时也可以在工具栏菜单里临时选择。
+deepread-pref-readflow-ocr = 文档识别
+deepread-pref-readflow-ocr-local =
+    .label = 本地（文字层优先）
+
 deepread-pref-reading-title = 阅读
 deepread-pref-language = 输出语言
 deepread-pref-filter-author =
@@ -91,7 +106,7 @@ deepread-pref-view-translation =
 deepread-pref-chat-maxcontext = 对话最大上下文字符数
 
 deepread-pref-privacy-title = 隐私
-deepread-pref-privacy-note = API Key 仅保存在本机的 Zotero 设置中；PDF 内容只会发送到您在此处配置的服务。
+deepread-pref-privacy-note = API Key 保存在本机的 Zotero 设置中；PDF 内容只会发送到您在此处配置的服务。使用整篇翻译时，大模型 Key 会登记到本机 ReadFlow 的密钥库（名称 deepread-llm），由 ReadFlow 调用模型。
 
 deepread-pane-flashcards-header =
     .label = 闪卡

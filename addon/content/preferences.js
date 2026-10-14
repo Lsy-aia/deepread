@@ -167,6 +167,9 @@
     wireTest("deepread-pref-parser-test", "deepread-pref-parser-status", function () {
       return Zotero.DeepRead && Zotero.DeepRead.Parser;
     });
+    wireTest("deepread-pref-readflow-test", "deepread-pref-readflow-status", function () {
+      return Zotero.DeepRead && Zotero.DeepRead.ReadFlow;
+    });
   }
 
   // Zotero loads this script before inserting the pane fragment, then dispatches a

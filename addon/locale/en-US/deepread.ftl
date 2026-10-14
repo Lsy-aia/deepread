@@ -78,6 +78,21 @@ deepread-pref-parser-selfhost-url = Service URL
 deepread-pref-parser-selfhost-token = Token (optional)
 deepread-pref-parser-selfhost-backend = Backend
 
+deepread-pref-readflow-title = Full-document translation (ReadFlow)
+deepread-pref-readflow-hint = Generate a layout-preserving translated PDF through the local ReadFlow service and save it as an attachment on the item. Translation uses the LLM settings above. Open ReadFlow (or deploy its backend service) before use.
+deepread-pref-readflow-baseurl = Service URL
+deepread-pref-readflow-apikey = API Key
+deepread-pref-readflow-apikey-hint = The ReadFlow desktop app uses retain-pdf-desktop by default; for a self-hosted service, enter the key you configured.
+deepread-pref-readflow-mode = Default output
+deepread-pref-readflow-mode-dual =
+    .label = Side by side (original | translation)
+deepread-pref-readflow-mode-inplace =
+    .label = In place (layout preserved)
+deepread-pref-readflow-mode-hint = You can also pick a different output for a single run from the toolbar menu.
+deepread-pref-readflow-ocr = Recognition
+deepread-pref-readflow-ocr-local =
+    .label = Local (text layer first)
+
 deepread-pref-reading-title = Reading
 deepread-pref-language = Output language
 deepread-pref-filter-author =
@@ -91,7 +106,7 @@ deepread-pref-view-translation =
 deepread-pref-chat-maxcontext = Chat max context characters
 
 deepread-pref-privacy-title = Privacy
-deepread-pref-privacy-note = API keys are stored in Zotero preferences on this computer only. PDF content is sent only to the services you configure here.
+deepread-pref-privacy-note = API keys are stored in Zotero preferences on this computer. PDF content is sent only to the services you configure here. Full-document translation registers the LLM key in the local ReadFlow key store (label deepread-llm) so ReadFlow can call the model.
 
 deepread-pane-flashcards-header =
     .label = Flashcards
