@@ -114,6 +114,11 @@
         () => onRun(session, doc)),
       h(doc, "hr"),
       item([check("view.marginCards"), DeepRead.bilingual("页边卡片", "Margin cards")], () => toggleOption("view.marginCards", null)),
+      item([h(doc, "span", { class: "dr-check" }, DeepRead.prefs.get("view.railLayout") !== "right" ? "✓" : ""),
+        DeepRead.bilingual("双栏卡片（左栏段落放左边）", "Split cards (left-column paragraphs on the left)")], () => {
+        DeepRead.prefs.set("view.railLayout", DeepRead.prefs.get("view.railLayout") === "right" ? "split" : "right");
+        DeepRead.Session.forEachOverlay((overlay) => overlay.session.rail?.refresh());
+      }),
       item([check("view.highlights"), DeepRead.t("toolbar.showHighlights")], () => toggleOption("view.highlights", "highlights")),
       item([check("view.hoverCards"), DeepRead.t("toolbar.showCards")], () => toggleOption("view.hoverCards", "hoverCards")),
       item([check("view.translationPopup"), DeepRead.t("toolbar.showTranslation")], () => toggleOption("view.translationPopup", "translationPopup")),

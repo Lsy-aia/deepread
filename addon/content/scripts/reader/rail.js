@@ -23,6 +23,8 @@
   border-inline-start: 1px solid var(--color-panedivider, rgba(0,0,0,0.12));
   background: var(--material-sidepane, #f6f7f8); color: var(--fill-primary, #1f2328);
   font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+.deepread-rail.dr-left { border-inline-start: none; border-inline-end: 1px solid var(--color-panedivider, rgba(0,0,0,0.12)); }
+.deepread-rail.dr-left .dr-rcard { left: 8px; right: 12px; }
 .deepread-rail svg.dr-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .deepread-rail .dr-rcard { position: absolute; left: 12px; right: 8px; box-sizing: border-box; padding: 6px 8px 5px;
   border-radius: 8px; background: var(--material-background, #fff); border: 1px solid rgba(0,0,0,0.08);
@@ -104,6 +106,31 @@
       return DeepRead.prefs.get("view.marginCards") !== false;
     }
 
+    /** "split": left-column paragraphs get cards on the left of the PDF; "right": one rail. */
+    get layoutMode() {
+      return DeepRead.prefs.get("view.railLayout") === "right" ? "right" : "split";
+    }
+
+    /** Which rail a paragraph/flashcard belongs to, from its horizontal position on the page. */
+    _sideFor(pageIndex, rect) {
+      if (this.layoutMode !== "split" || !rect) return "right";
+      const geom = this.overlay._geometry(pageIndex);
+      if (!geom) return "right";
+      const pct = this.overlay._toPercent(geom, rect);
+      if (pct.width > 60) return "right"; // full-width (single-column) block
+      return pct.left + pct.width / 2 < 50 ? "left" : "right";
+    }
+
+    _hasLeftItems() {
+      if (this.layoutMode !== "split") return false;
+      for (const [pageIndex, paragraphs] of this.overlay.pages) {
+        for (const paragraph of paragraphs) {
+          if (this._sideFor(pageIndex, paragraph.bbox) === "left") return true;
+        }
+      }
+      return false;
+    }
+
     get overlay() {
       return this.session.overlay;
     }
@@ -137,6 +164,8 @@
       this._raf = null;
       this.root?.remove();
       this.root = null;
+      this.leftRoot?.remove();
+      this.leftRoot = null;
       this.cards.clear();
       this.container?.classList.remove("deepread-has-rail");
       this.overlay.setRailActive?.(false);
@@ -155,12 +184,15 @@
         if (this.root) this._teardownDOM();
         return;
       }
-      if (!this.root) this._buildDOM();
+      // Rebuild when the rail layout changed (e.g. a left rail is now needed or no longer needed).
+      const wantLeft = this._hasLeftItems();
+      if (this.root && !!this.leftRoot !== wantLeft) this._teardownDOM();
+      if (!this.root) this._buildDOM(wantLeft);
       for (const card of this.cards.values()) card.sig = null; // force content refresh
-      this.schedule();
+      this.schedule(true);
     }
 
-    _buildDOM() {
+    _buildDOM(withLeft = false) {
       const doc = this.readerDoc;
       if (!doc.getElementById("deepread-rail-css")) {
         const style = doc.createElementNS(HTML_NS, "style");
@@ -176,14 +208,24 @@
         (doc.head || doc.documentElement).append(link);
         this._cleanup.push(() => link.remove());
       }
-      const width = Math.max(220, Math.min(520, DeepRead.prefs.number("view.railWidth", 300)));
-      this.root = el(doc, "div", "deepread-rail");
-      this.root.style.setProperty("--dr-rail-width", `${width}px`);
-      this.svg = doc.createElementNS(SVG_NS, "svg");
-      this.svg.setAttribute("class", "dr-links");
-      this.root.append(this.svg);
+      const width = Math.max(200, Math.min(520, DeepRead.prefs.number("view.railWidth", 280)));
+      const makeRail = (cls) => {
+        const rail = el(doc, "div", cls);
+        rail.style.setProperty("--dr-rail-width", `${width}px`);
+        const svg = doc.createElementNS(SVG_NS, "svg");
+        svg.setAttribute("class", "dr-links");
+        rail.append(svg);
+        rail._svg = svg;
+        return rail;
+      };
+      this.root = makeRail("deepread-rail dr-right");
+      this.svg = this.root._svg;
       this.container.classList.add("deepread-has-rail");
       this.container.append(this.root);
+      if (withLeft) {
+        this.leftRoot = makeRail("deepread-rail dr-left");
+        this.container.prepend(this.leftRoot);
+      }
       this.overlay.setRailActive?.(true);
 
       const schedule = () => this.schedule();
@@ -207,6 +249,7 @@
       });
       const ro = new this.readerWin.ResizeObserver(() => this.schedule(true));
       ro.observe(this.root);
+      if (this.leftRoot) ro.observe(this.leftRoot);
       this._cleanup.push(() => ro.disconnect());
       this._cleanup.push(() => this.readerDoc.getElementById("deepread-rail-css")?.remove());
     }
@@ -295,42 +338,60 @@
 
       const width = this.root.clientWidth;
       const keep = new Set();
-      const links = [];
-      // Lay out page by page so that a crowded page never pushes the next page's cards away
-      // from their paragraphs: if a page's cards overflow its box, they switch to compact mode
-      // (summary line only, expand on hover). The reader's own notes stay visible regardless.
-      const pages = [];
+      const links = { left: [], right: [] };
+      this._sideOfKey = new Map();
       for (const item of placed) {
-        let group = pages[pages.length - 1];
-        if (!group || group.pageIndex !== item.pageIndex) pages.push(group = { pageIndex: item.pageIndex, items: [] });
-        group.items.push(item);
+        item.side = this.leftRoot ? this._sideFor(item.pageIndex, item.rect) : "right";
+        this._sideOfKey.set(item.key, item.side);
       }
-      let bottom = -Infinity;
-      for (const group of pages) {
-        const range = this._pageRange(group.pageIndex);
-        const stack = () => {
-          let b = bottom;
-          for (const item of group.items) {
-            const card = this._ensureCard(item, width);
-            item.top = Math.max(item.anchor, b + GAP);
-            b = item.top + card.height;
-          }
-          return b;
-        };
-        let end = stack();
-        if (range && end > range.bottom + 8 && !this.compactPages.has(group.pageIndex)) {
-          this.compactPages.add(group.pageIndex);
-          end = stack();
+      // Pages laid out after the rail was built may reveal left-column paragraphs.
+      if (!this.leftRoot && this.layoutMode === "split" && !this._leftCheckPending
+          && placed.some((item) => this._sideFor(item.pageIndex, item.rect) === "left")) {
+        this._leftCheckPending = true;
+        setTimeout(() => {
+          this._leftCheckPending = false;
+          this.refresh();
+        }, 0);
+      }
+      // Lay out each rail page by page so that a crowded page never pushes the next page's
+      // cards away from their paragraphs: if a page's cards overflow its box, they switch to
+      // compact mode (summary line only, expand on hover). The reader's own notes stay visible.
+      for (const side of ["left", "right"]) {
+        const sideItems = placed.filter((item) => item.side === side);
+        const pages = [];
+        for (const item of sideItems) {
+          let group = pages[pages.length - 1];
+          if (!group || group.pageIndex !== item.pageIndex) pages.push(group = { pageIndex: item.pageIndex, items: [] });
+          group.items.push(item);
         }
-        bottom = end;
-        for (const item of group.items) {
-          const card = this.cards.get(item.key);
-          keep.add(item.key);
-          const onScreen = item.top + card.height > -50 && item.top < railHeight + 50;
-          card.el.hidden = !onScreen;
-          if (onScreen) {
-            card.el.style.top = `${Math.round(item.top)}px`;
-            links.push({ anchor: item.anchor, top: item.top, kind: item.kind });
+        let bottom = -Infinity;
+        for (const group of pages) {
+          const range = this._pageRange(group.pageIndex);
+          const compactKey = `${side}:${group.pageIndex}`;
+          const stack = () => {
+            let b = bottom;
+            for (const item of group.items) {
+              const card = this._ensureCard(item, width);
+              item.top = Math.max(item.anchor, b + GAP);
+              b = item.top + card.height;
+            }
+            return b;
+          };
+          let end = stack();
+          if (range && end > range.bottom + 8 && !this.compactPages.has(compactKey)) {
+            this.compactPages.add(compactKey);
+            end = stack();
+          }
+          bottom = end;
+          for (const item of group.items) {
+            const card = this.cards.get(item.key);
+            keep.add(item.key);
+            const onScreen = item.top + card.height > -50 && item.top < railHeight + 50;
+            card.el.hidden = !onScreen;
+            if (onScreen) {
+              card.el.style.top = `${Math.round(item.top)}px`;
+              links[side].push({ anchor: item.anchor, top: item.top, kind: item.kind });
+            }
           }
         }
       }
@@ -341,23 +402,27 @@
         }
       }
       this._remeasure = false;
-      this._drawLinks(links);
+      this._drawLinks(this.svg, links.right, "right");
+      if (this.leftRoot) this._drawLinks(this.leftRoot._svg, links.left, "left");
     }
 
-    _drawLinks(links) {
-      const svg = this.svg;
+    _drawLinks(svg, links, side) {
       while (svg.firstChild) svg.firstChild.remove();
+      const w = svg.parentNode?.clientWidth || 0;
+      // The connector gutter faces the page: left edge of the right rail, right edge of the left rail.
+      const x = side === "left" ? w - 3 : 3;
+      const x2 = side === "left" ? w - 12 : 12;
       for (const { anchor, top, kind } of links) {
         const color = kind === "flashcard" ? "rgba(202,138,4,0.75)" : "rgba(107,114,128,0.55)";
         const dot = this.readerDoc.createElementNS(SVG_NS, "circle");
-        dot.setAttribute("cx", "3");
+        dot.setAttribute("cx", String(x));
         dot.setAttribute("cy", String(anchor + 4));
         dot.setAttribute("r", "2");
         dot.setAttribute("fill", color);
         svg.append(dot);
         if (top - anchor > 3) {
           const path = this.readerDoc.createElementNS(SVG_NS, "path");
-          path.setAttribute("d", `M3 ${anchor + 4} L3 ${top + 10} L12 ${top + 10}`);
+          path.setAttribute("d", `M${x} ${anchor + 4} L${x} ${top + 10} L${x2} ${top + 10}`);
           path.setAttribute("fill", "none");
           path.setAttribute("stroke", color);
           path.setAttribute("stroke-width", "1");
@@ -378,7 +443,7 @@
       const levels = (p.points || []).map((pt) => this.session.pointLevel(pt)).join("");
       const attached = this.session.flashcardsForParagraph(item.key).map((c) => this._cardSignature(c)).join("||");
       return `p|${this.session.paragraphSummary(p)}|${levels}|${this.expanded.has(item.key)}|${this.overlay.options.translationPopup}`
-        + `|${this.compactPages?.has(item.pageIndex) ? "c" : ""}`
+        + `|${this.compactPages?.has(`${item.side || "right"}:${item.pageIndex}`) ? "c" : ""}`
         + `|${this.session.paragraphNote(item.key)}|${this.noteEditing === item.key}|${attached}`;
     }
 
@@ -394,8 +459,12 @@
       if (!card) {
         card = { el: el(this.readerDoc, "div", "dr-rcard"), height: 0, width: 0, sig: null };
         card.el.dataset.key = item.key;
-        this.root.append(card.el);
         this.cards.set(item.key, card);
+      }
+      const parent = item.side === "left" && this.leftRoot ? this.leftRoot : this.root;
+      if (card.el.parentNode !== parent) {
+        parent.append(card.el);
+        card.height = 0;
       }
       if (card.sig !== sig) {
         card.el.replaceChildren();
@@ -427,7 +496,8 @@
       const doc = this.readerDoc;
       const session = this.session;
       node.classList.toggle("dr-expanded", this.expanded.has(key));
-      node.classList.toggle("dr-compact", !!this.compactPages?.has(paragraph.pageIndex) && !this.expanded.has(key));
+      const side = this._sideOfKey?.get(key) || "right";
+      node.classList.toggle("dr-compact", !!this.compactPages?.has(`${side}:${paragraph.pageIndex}`) && !this.expanded.has(key));
       const head = el(doc, "div", "dr-rhead");
       const summary = el(doc, "div", "dr-rsummary", session.paragraphSummary(paragraph) || "…");
       summary.title = DeepRead.bilingual("单击展开译文 · 双击编辑", "Click to expand translations · double-click to edit");

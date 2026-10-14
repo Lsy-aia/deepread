@@ -33,12 +33,13 @@ E2E.run = async function () {
   }
 
   const DR = await waitFor(() => Zotero.DeepRead, 15000, "plugin");
-  let item = (await Zotero.Items.getAll(Zotero.Libraries.userLibraryID)).find((i) => i.isPDFAttachment() && !i.deleted);
+  let item = (await Zotero.Items.getAll(Zotero.Libraries.userLibraryID)).find((i) => i.isPDFAttachment() && !i.deleted && i.attachmentFilename === "demo-paper.pdf");
   if (!item) {
     item = await Zotero.Attachments.importFromFile({ file: Zotero.File.pathToFile(E2E.env("DEEPREAD_E2E_PDF")), libraryID: Zotero.Libraries.userLibraryID });
   }
   DR.prefs.set("view.marginCards", true);
-  const reader = await Zotero.Reader.open(item.id);
+  await Zotero.Reader.open(item.id);
+  const reader = Zotero.Reader._readers.find((r) => r.itemID === item.id);
   await reader._initPromise;
   const session = DR.Session.forReader(reader);
   await session.init();
@@ -92,7 +93,7 @@ E2E.run = async function () {
   const card = await session.createFlashcard({ pageIndex: 1, rects: para.rects, quote: para.paragraphText, source: "paragraph" });
   await sleep(600);
   const saved = session.flashcards.find((c) => c.id === card.id);
-  step("flashcard", { before, after: session.flashcards.length, question: saved?.question, answer: saved?.answer?.slice(0, 60), inRail: rail.cards.has(`f_${card.id}`) });
+  step("flashcard", { before, after: session.flashcards.length, question: saved?.question, answer: saved?.answer?.slice(0, 60), inRail: rail.cards.has(`f_${card.id}`) || !!rail.cards.get(`p_1_${para.paragraphIndex}`)?.el.querySelector(".dr-fc-attached") });
   session.flipped.add(card.id);
   rail.refresh();
   await sleep(500);

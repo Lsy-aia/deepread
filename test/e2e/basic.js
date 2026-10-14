@@ -44,7 +44,7 @@ E2E.run = async function () {
 
   // Import the demo PDF once.
   const pdfPath = E2E.env("DEEPREAD_E2E_PDF");
-  let item = (await Zotero.Items.getAll(Zotero.Libraries.userLibraryID)).find((i) => i.isPDFAttachment() && !i.deleted);
+  let item = (await Zotero.Items.getAll(Zotero.Libraries.userLibraryID)).find((i) => i.isPDFAttachment() && !i.deleted && i.attachmentFilename === "demo-paper.pdf");
   if (!item) {
     item = await Zotero.Attachments.importFromFile({ file: Zotero.File.pathToFile(pdfPath), libraryID: Zotero.Libraries.userLibraryID });
   }
@@ -53,7 +53,8 @@ E2E.run = async function () {
   const reset = E2E.env("E2E_RESET") !== "0";
   if (reset) await DR.Store.deletePaper(DR.util.attachmentKey(item));
 
-  const reader = await Zotero.Reader.open(item.id);
+  await Zotero.Reader.open(item.id);
+  const reader = Zotero.Reader._readers.find((r) => r.itemID === item.id);
   await reader._initPromise;
   const session = DR.Session.forReader(reader);
   await session.init();
