@@ -101,6 +101,8 @@
         quote,
         question,
         answer: str(card.answer),
+        note: str(card.note), // the reader's own understanding (never folded in the UI)
+        paragraphKey: str(card.paragraphKey), // "p_<page>_<paragraph>" when attached to a paragraph card
         color: str(card.color),
         source: ["selection", "paragraph", "manual"].includes(card.source) ? card.source : "manual",
       };
@@ -130,6 +132,7 @@
 
     async save(attachmentKey, card) {
       const clean = this.validate(card);
+      delete clean._busy;
       const now = isoNow();
       clean.id = clean.id || newID();
       clean.createdAt = clean.createdAt || now;
@@ -191,7 +194,7 @@
       return str(res.content);
     },
 
-    async exportToNote(parentItem, cards, { title } = {}) {
+    async exportToNote(parentItem, cards, { title, paragraphNotes = [] } = {}) {
       const paperTitle = parentItem?.getField?.("title") || "";
       const heading = title || `${DeepRead.bilingual("闪卡", "Flashcards")} · ${paperTitle}`;
       const html = [`<h1>${escapeHTML(heading)}</h1>`];
@@ -199,6 +202,13 @@
         html.push(`<h3>${escapeHTML(card.question || card.quote)}</h3>`);
         if (card.quote) html.push(`<blockquote><p>${escapeHTML(card.quote)} (p. ${card.pageIndex + 1})</p></blockquote>`);
         if (card.answer) html.push(paragraphsHTML(card.answer));
+        if (card.note) html.push(`<p><strong>${escapeHTML(DeepRead.bilingual("我的理解：", "My understanding: "))}</strong></p>`, paragraphsHTML(card.note));
+      }
+      if (paragraphNotes.length) {
+        html.push(`<h2>${escapeHTML(DeepRead.bilingual("我的理解", "My understanding"))}</h2>`);
+        for (const entry of paragraphNotes) {
+          html.push(`<h3>${escapeHTML(entry.summary || "")} (p. ${entry.pageIndex + 1})</h3>`, paragraphsHTML(entry.note));
+        }
       }
       const note = new Zotero.Item("note");
       note.libraryID = parentItem.libraryID;

@@ -8,7 +8,7 @@ pref("extensions.zotero.deepread.llm.temperature", "0.6");
 pref("extensions.zotero.deepread.llm.concurrency", 8);
 pref("extensions.zotero.deepread.llm.extraHeaders", "");
 
-pref("extensions.zotero.deepread.parser.provider", "mineru");
+pref("extensions.zotero.deepread.parser.provider", "builtin");
 pref("extensions.zotero.deepread.parser.mineruToken", "");
 pref("extensions.zotero.deepread.parser.mineruBaseURL", "https://mineru.net");
 pref("extensions.zotero.deepread.parser.mineruModel", "pipeline");
@@ -19,6 +19,7 @@ pref("extensions.zotero.deepread.parser.mineruTable", true);
 pref("extensions.zotero.deepread.parser.selfHostURL", "http://127.0.0.1:8000");
 pref("extensions.zotero.deepread.parser.selfHostToken", "");
 pref("extensions.zotero.deepread.parser.selfHostBackend", "pipeline");
+pref("extensions.zotero.deepread.parser.grobidURL", "http://127.0.0.1:8070");
 
 pref("extensions.zotero.deepread.language", "zh");
 pref("extensions.zotero.deepread.filterAuthorBlocks", true);

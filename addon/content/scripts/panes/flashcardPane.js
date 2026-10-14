@@ -20,6 +20,8 @@
     question.value = card.question || "";
     const answer = h("textarea", { class: "dr-fc-input", rows: "4", placeholder: t("答案（支持 Markdown / $公式$）", "Answer (Markdown / $math$)") });
     answer.value = card.answer || "";
+    const note = h("textarea", { class: "dr-fc-input", rows: "3", placeholder: t("我的理解（始终展开显示）", "My understanding (always shown)") });
+    note.value = card.note || "";
     const message = h("div", { class: "dr-small dr-muted dr-fc-msg" });
     const aiButton = h("button", { class: "dr-link-button" }, t("AI 生成答案", "AI answer"));
     const saveButton = h("button", { class: "dr-primary-button" }, t("保存", "Save"));
@@ -69,7 +71,7 @@
       saveButton.disabled = true;
       try {
         controller?.abort();
-        await session.saveFlashcard({ ...card, question: question.value, answer: answer.value });
+        await session.saveFlashcard({ ...card, question: question.value, answer: answer.value, note: note.value });
         root._editingId = null;
         render(ctx, root);
       }
@@ -81,7 +83,7 @@
     cancelButton.addEventListener("click", close);
 
     return h("div", { class: "dr-fc-editor" },
-      question, answer, message,
+      question, answer, note, message,
       h("div", { class: "dr-fc-actions" }, saveButton, cancelButton, aiButton));
   }
 
@@ -151,6 +153,12 @@
     else {
       el.append(h("div", { class: "dr-muted dr-small" }, t("尚无答案，点击「编辑」填写或让 AI 生成。", "No answer yet; click Edit to write one or let AI generate it.")));
     }
+    // The reader's own understanding is never hidden, not even in review mode.
+    if (card.note) {
+      el.append(h("div", { class: "dr-fc-note" },
+        h("div", { class: "dr-fc-note-label" }, t("我的理解", "My understanding")),
+        h("div", { class: "dr-fc-note-text" }, card.note)));
+    }
     return el;
   }
 
@@ -183,7 +191,7 @@
     exportButton.addEventListener("click", async () => {
       exportButton.disabled = true;
       try {
-        const note = await DeepRead.Flashcards.exportToNote(session.parentItem, cards);
+        const note = await DeepRead.Flashcards.exportToNote(session.parentItem, cards, { paragraphNotes: session.paragraphNotesList() });
         const noteTitle = note.getNoteTitle?.() || "";
         message.textContent = t(`已导出为笔记：${noteTitle}`, `Exported to note: ${noteTitle}`);
       }

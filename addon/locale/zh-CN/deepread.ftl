@@ -52,10 +52,17 @@ deepread-pref-llm-extraheaders = 额外请求头 (JSON，可选)
 
 deepread-pref-parser-title = PDF 结构解析
 deepread-pref-parser-provider = 解析服务
+deepread-pref-parser-provider-builtin =
+    .label = 内置解析（PDF 文本层，无需服务，推荐）
+deepread-pref-parser-provider-grobid =
+    .label = GROBID 本地服务（轻量，CPU）
 deepread-pref-parser-provider-mineru =
     .label = MinerU 官方 API
 deepread-pref-parser-provider-selfhost =
     .label = 自建 / 第三方 MinerU 兼容服务
+deepread-pref-parser-builtin-hint = 直接使用 PDF 自带的文字层识别段落、标题、图表和公式，速度快、免费、不上传文件。适合大多数电子版论文；扫描版 PDF 没有文字层，无法使用精读功能。复杂表格和公式较多时可改用 GROBID 或 MinerU。
+deepread-pref-parser-grobid-hint = GROBID 是专为学术论文设计的开源解析服务，仅需 CPU 和约 1–2 GB 内存。用 Docker 启动：在插件源码目录运行 scripts/grobid.sh start。
+deepread-pref-parser-grobid-url = 服务地址
 deepread-pref-parser-mineru-hint = 请在 https://mineru.net/apiManage 申请 Token。
 deepread-pref-parser-token = Token
 deepread-pref-parser-mineru-model = 解析模型

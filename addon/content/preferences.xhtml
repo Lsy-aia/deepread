@@ -77,11 +77,25 @@
 				<label data-l10n-id="deepread-pref-parser-provider" control="deepread-pref-parser-provider"/>
 				<menulist id="deepread-pref-parser-provider" native="true" preference="extensions.zotero.deepread.parser.provider">
 					<menupopup>
+						<menuitem data-l10n-id="deepread-pref-parser-provider-builtin" value="builtin"/>
+						<menuitem data-l10n-id="deepread-pref-parser-provider-grobid" value="grobid"/>
 						<menuitem data-l10n-id="deepread-pref-parser-provider-mineru" value="mineru"/>
 						<menuitem data-l10n-id="deepread-pref-parser-provider-selfhost" value="selfhost"/>
 					</menupopup>
 				</menulist>
 			</hbox>
+
+			<vbox id="deepread-pref-parser-builtin">
+				<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-parser-builtin-hint"/>
+			</vbox>
+
+			<vbox id="deepread-pref-parser-grobid">
+				<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-parser-grobid-hint"/>
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-parser-grobid-url" control="deepread-pref-parser-grobid-url"/>
+					<html:input id="deepread-pref-parser-grobid-url" type="text" class="deepread-pref-input" placeholder="http://127.0.0.1:8070" preference="extensions.zotero.deepread.parser.grobidURL"/>
+				</hbox>
+			</vbox>
 
 			<vbox id="deepread-pref-parser-mineru">
 				<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-parser-mineru-hint"/>

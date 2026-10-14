@@ -30,11 +30,37 @@ DeepRead.Parser = {
 
   isConfigured(config) {
     const cfg = config || DeepRead.prefs.parserConfig();
+    if (cfg.provider === "builtin") return true;
+    if (cfg.provider === "grobid") return !!cfg.grobidURL;
     if (cfg.provider === "selfhost") return !!cfg.selfHostURL;
     return !!cfg.mineruToken;
   },
 
-  async parsePDF({ filePath, attachmentKey, onStatus, signal } = {}) {
+  /** Providers that build the content list in-process ("builtin") or from a local service ("grobid"). */
+  async _parseToContentList(ctx, pdfApp) {
+    const { cfg, filePath, resultDir, status, signal } = ctx;
+    let result;
+    if (cfg.provider === "builtin") {
+      if (!pdfApp) throw new Error(DeepRead.bilingual("内置解析需要在阅读器中打开 PDF", "The built-in parser needs the PDF open in the reader"));
+      result = await DeepRead.TextLayerParser.parse({ pdfApp, onStatus: (s) => status(s.phase || "running", s.message, s), signal });
+    }
+    else {
+      result = await DeepRead.GrobidParser.parse({ filePath, config: cfg, onStatus: (s) => status(s.phase || "running", s.message, s), signal });
+    }
+    const contentList = Array.isArray(result?.contentList) ? result.contentList : [];
+    if (!contentList.length) {
+      throw new Error(DeepRead.bilingual("没有从 PDF 中解析出内容（扫描版 PDF 没有文字层）", "No content was extracted from the PDF (scanned PDFs have no text layer)"));
+    }
+    await IOUtils.writeUTF8(PathUtils.join(resultDir, "content_list.json"), JSON.stringify(contentList));
+    await IOUtils.writeUTF8(PathUtils.join(resultDir, "full.md"), result.markdown || "");
+    return {
+      resultDir,
+      contentList: contentList.map((item, index) => ({ id: index, ...item })),
+      markdown: result.markdown || "",
+    };
+  },
+
+  async parsePDF({ filePath, attachmentKey, onStatus, signal, pdfApp } = {}) {
     const cfg = DeepRead.prefs.parserConfig();
     const status = (phase, message, extra) => {
       try {
@@ -52,6 +78,9 @@ DeepRead.Parser = {
     await this._emptyDir(resultDir);
 
     const ctx = { cfg, filePath, attachmentKey, resultDir, status, signal };
+    if (cfg.provider === "builtin" || cfg.provider === "grobid") {
+      return await this._parseToContentList(ctx, pdfApp);
+    }
     if (cfg.provider === "selfhost") {
       await this._selfhostParse(ctx);
     }
@@ -65,6 +94,13 @@ DeepRead.Parser = {
   async testConnection(config) {
     try {
       const cfg = config || DeepRead.prefs.parserConfig();
+      if (cfg.provider === "builtin") {
+        return { ok: true, message: DeepRead.bilingual("内置解析无需联网或服务，可直接使用", "The built-in parser needs no service — ready to use") };
+      }
+      if (cfg.provider === "grobid") {
+        if (!cfg.grobidURL) return { ok: false, message: DeepRead.bilingual("请填写 GROBID 服务地址", "Enter the GROBID service URL") };
+        return await DeepRead.GrobidParser.testConnection(cfg);
+      }
       if (!this.isConfigured(cfg)) {
         return {
           ok: false,

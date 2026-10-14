@@ -170,3 +170,34 @@ Optional token pref `github.token` (Bearer). Errors name the step, include statu
 Client for DeepWiki's public MCP server (pref `deepwiki.endpoint`, default `https://mcp.deepwiki.com/mcp`):
 `callTool(name, args, { signal })` → text; `readWikiStructure(fullName)`, `readWikiContents(fullName)`,
 `askQuestion(fullName, question, { signal })`. Handles MCP initialize/session id and JSON or SSE responses.
+
+## v0.3 parser providers (lightweight / local)
+
+`DeepRead.Parser.parsePDF` dispatches on pref `parser.provider`:
+`"builtin"` (new default) | `"grobid"` | `"mineru"` | `"selfhost"`. Every provider must return a **MinerU-style
+content list**: items in reading order, each `{ type: "text"|"image"|"table"|"equation", text?, text_level? (1 for
+titles/headings), bbox: [x0, y0, x1, y1] (per-mille 0–1000 of the page box, TOP-LEFT origin), page_idx (0-based) }`;
+images `{ type:"image", img_path:"", image_caption:[...], image_footnote:[] }`, tables `{ type:"table", img_path:"",
+table_caption:[...], table_body:"", table_footnote:[] }`, equations `{ type:"equation", text, text_format:"latex"|"text" }`.
+Headers, footers, page numbers and marginal stamps (e.g. the rotated arXiv id) are omitted. `Parser` adds `id`.
+Per-mille conversion from a PDF rect `[x1,y1,x2,y2]` (bottom-left origin) on a page with view box `[vx0,vy0,vx1,vy1]`:
+`x = (X - vx0) / (vx1 - vx0) * 1000`, `y = (vy1 - Y) / (vy1 - vy0) * 1000` (so y0 comes from the rect's top).
+
+### DeepRead.TextLayerParser — `services/textLayerParser.js` (provider "builtin", no service)
+```js
+await DeepRead.TextLayerParser.parse({ pdfApp, onStatus, signal }) // → { contentList, markdown }
+DeepRead.TextLayerParser.buildContentList(pages)                    // pure function (unit-testable)
+//   pages = [{ pageIndex, viewBox: [x0,y0,x1,y1], chars: [...] }] as returned by pdfApp.pdfDocument.getPageData
+```
+`pdfApp` is the session's pdf adapter (`pdfDocument.numPages`, `pdfDocument.getPageData({pageIndex})` → `{ chars,
+viewBox }`). Chars (Zotero's structured text): `{ c, u, rect:[x1,y1,x2,y2], fontSize, fontName, bold, italic, baseline,
+rotation, spaceAfter, lineBreakAfter, paragraphBreakAfter, inlineRect }`, in reading order (columns handled).
+
+### DeepRead.GrobidParser — `services/grobidParser.js` (provider "grobid", local Docker service)
+```js
+await DeepRead.GrobidParser.parse({ filePath, config, onStatus, signal }) // → { contentList, markdown }
+DeepRead.GrobidParser.teiToContentList(teiXmlString, { DOMParser })       // pure function (unit-testable)
+await DeepRead.GrobidParser.testConnection(config)                        // → { ok, message }
+```
+Config: `parser.grobidURL` (default `http://127.0.0.1:8070`). `POST {url}/api/processFulltextDocument` with
+`teiCoordinates` for head, p, s, figure, formula, title; page sizes from `<facsimile><surface>`.

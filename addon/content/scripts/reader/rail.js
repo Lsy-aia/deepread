@@ -52,6 +52,25 @@
 .deepread-rail .dr-fc-a { margin-top: 3px; padding-top: 3px; border-top: 1px dashed rgba(161,98,7,0.35); }
 .deepread-rail .dr-fc-a p { margin: 0.2em 0; }
 .deepread-rail .dr-muted { color: var(--fill-secondary, #6b7280); }
+.deepread-rail .dr-rcard:hover { z-index: 5; }
+.deepread-rail .dr-rcard.dr-compact { padding-block: 3px; }
+.deepread-rail .dr-rcard.dr-compact .dr-rsummary { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deepread-rail .dr-rcard.dr-compact .dr-points { display: none; }
+.deepread-rail .dr-rcard.dr-compact:hover .dr-rsummary { white-space: normal; font-weight: 600; }
+.deepread-rail .dr-rcard.dr-compact:hover .dr-points { display: block; }
+.deepread-rail .dr-note { margin-top: 5px; padding: 4px 7px; border-radius: 6px; border-inline-start: 3px solid #10b981;
+  background: rgba(16,185,129,0.08); color: var(--fill-primary, #1f2328); cursor: text; }
+.deepread-rail .dr-note-label { font-size: 10.5px; font-weight: 700; color: #047857; }
+.deepread-rail .dr-note-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.deepread-rail .dr-note-editing textarea { margin-top: 2px; }
+.deepread-rail .dr-attached { margin-top: 5px; display: flex; flex-direction: column; gap: 4px; }
+.deepread-rail .dr-fc-attached { padding: 4px 7px; border-radius: 6px; background: #fffbea; border: 1px solid rgba(234,179,8,0.4); cursor: pointer; }
+.deepread-rail .dr-fc-attached:hover .dr-ractions { display: flex; }
+.deepread-rail .dr-fc-reveal { font-size: 11px; }
+.deepread-rail .dr-fc .dr-note { cursor: default; }
+:root[data-color-scheme="dark"] .deepread-rail .dr-note { background: rgba(16,185,129,0.14); color: #e6e6e6; }
+:root[data-color-scheme="dark"] .deepread-rail .dr-note-label { color: #34d399; }
+:root[data-color-scheme="dark"] .deepread-rail .dr-fc-attached { background: #3a3320; border-color: rgba(234,179,8,0.35); }
 .deepread-rail textarea { width: 100%; box-sizing: border-box; font: inherit; resize: vertical; margin: 2px 0;
   border: 1px solid rgba(0,0,0,0.15); border-radius: 5px; padding: 3px 5px; background: var(--material-background, #fff); color: inherit; }
 .deepread-rail .dr-fc-buttons { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
@@ -217,7 +236,10 @@
           items.push({ key, kind: "paragraph", pageIndex, rect: paragraph.bbox, data: paragraph });
         }
       }
+      const shownParagraphs = new Set(items.map((item) => item.key));
       for (const card of this.session.flashcards || []) {
+        // Cards linked to a visible paragraph card are rendered inside it (see _fillParagraph).
+        if (shownParagraphs.has(this.session.flashcardParagraphKey(card))) continue;
         const rect = card.rects?.length ? DeepRead.Overlay.unionRect(card.rects) : null;
         if (!rect) continue;
         items.push({ key: `f_${card.id}`, kind: "flashcard", pageIndex: card.pageIndex, rect, data: card });
@@ -251,6 +273,15 @@
       return visible;
     }
 
+    /** Top/bottom (rail coordinates) of a page box. */
+    _pageRange(pageIndex) {
+      const geom = this.overlay._geometry(pageIndex);
+      if (!geom) return null;
+      const box = geom.div.getBoundingClientRect();
+      const offset = this.view._iframe.getBoundingClientRect().top - this.root.getBoundingClientRect().top;
+      return { top: offset + box.top, bottom: offset + box.bottom };
+    }
+
     _layout() {
       if (!this.root) return;
       const railHeight = this.root.clientHeight;
@@ -258,21 +289,49 @@
       const items = this._items().filter((item) => visible.has(item.pageIndex));
       for (const item of items) item.anchor = this._anchorY(item.pageIndex, item.rect);
       const placed = items.filter((item) => item.anchor !== null).sort((a, b) => a.anchor - b.anchor);
+      // Zoom/resize: re-decide which pages need compact cards.
+      if (this._remeasure) this.compactPages = new Set();
+      this.compactPages = this.compactPages || new Set();
 
       const width = this.root.clientWidth;
       const keep = new Set();
-      let bottom = -Infinity;
       const links = [];
+      // Lay out page by page so that a crowded page never pushes the next page's cards away
+      // from their paragraphs: if a page's cards overflow its box, they switch to compact mode
+      // (summary line only, expand on hover). The reader's own notes stay visible regardless.
+      const pages = [];
       for (const item of placed) {
-        const card = this._ensureCard(item, width);
-        const top = Math.max(item.anchor, bottom + GAP);
-        bottom = top + card.height;
-        keep.add(item.key);
-        const onScreen = bottom > -50 && top < railHeight + 50;
-        card.el.hidden = !onScreen;
-        if (onScreen) {
-          card.el.style.top = `${Math.round(top)}px`;
-          links.push({ anchor: item.anchor, top, kind: item.kind });
+        let group = pages[pages.length - 1];
+        if (!group || group.pageIndex !== item.pageIndex) pages.push(group = { pageIndex: item.pageIndex, items: [] });
+        group.items.push(item);
+      }
+      let bottom = -Infinity;
+      for (const group of pages) {
+        const range = this._pageRange(group.pageIndex);
+        const stack = () => {
+          let b = bottom;
+          for (const item of group.items) {
+            const card = this._ensureCard(item, width);
+            item.top = Math.max(item.anchor, b + GAP);
+            b = item.top + card.height;
+          }
+          return b;
+        };
+        let end = stack();
+        if (range && end > range.bottom + 8 && !this.compactPages.has(group.pageIndex)) {
+          this.compactPages.add(group.pageIndex);
+          end = stack();
+        }
+        bottom = end;
+        for (const item of group.items) {
+          const card = this.cards.get(item.key);
+          keep.add(item.key);
+          const onScreen = item.top + card.height > -50 && item.top < railHeight + 50;
+          card.el.hidden = !onScreen;
+          if (onScreen) {
+            card.el.style.top = `${Math.round(item.top)}px`;
+            links.push({ anchor: item.anchor, top: item.top, kind: item.kind });
+          }
         }
       }
       for (const [key, card] of this.cards) {
@@ -309,14 +368,24 @@
 
     /* ---------- cards ---------- */
 
+    _cardSignature(c) {
+      return `${c.id}|${c.question}|${c.answer}|${c.note}|${c.updatedAt}|${this.session.flipped?.has(c.id)}|${this.session.editingFlashcard === c.id}|${c._busy || ""}`;
+    }
+
     _signature(item) {
-      if (item.kind === "flashcard") {
-        const c = item.data;
-        return `f|${c.question}|${c.answer}|${c.updatedAt}|${this.session.flipped?.has(c.id)}|${this.session.editingFlashcard === c.id}|${c._busy || ""}`;
-      }
+      if (item.kind === "flashcard") return `f|${this._cardSignature(item.data)}`;
       const p = item.data;
       const levels = (p.points || []).map((pt) => this.session.pointLevel(pt)).join("");
-      return `p|${this.session.paragraphSummary(p)}|${levels}|${this.expanded.has(item.key)}|${this.overlay.options.translationPopup}`;
+      const attached = this.session.flashcardsForParagraph(item.key).map((c) => this._cardSignature(c)).join("||");
+      return `p|${this.session.paragraphSummary(p)}|${levels}|${this.expanded.has(item.key)}|${this.overlay.options.translationPopup}`
+        + `|${this.compactPages?.has(item.pageIndex) ? "c" : ""}`
+        + `|${this.session.paragraphNote(item.key)}|${this.noteEditing === item.key}|${attached}`;
+    }
+
+    _invalidate(key) {
+      const card = this.cards.get(key);
+      if (card) card.sig = null;
+      this.schedule(true);
     }
 
     _ensureCard(item, width) {
@@ -358,6 +427,7 @@
       const doc = this.readerDoc;
       const session = this.session;
       node.classList.toggle("dr-expanded", this.expanded.has(key));
+      node.classList.toggle("dr-compact", !!this.compactPages?.has(paragraph.pageIndex) && !this.expanded.has(key));
       const head = el(doc, "div", "dr-rhead");
       const summary = el(doc, "div", "dr-rsummary", session.paragraphSummary(paragraph) || "…");
       summary.title = DeepRead.bilingual("单击展开译文 · 双击编辑", "Click to expand translations · double-click to edit");
@@ -413,6 +483,10 @@
           source: "paragraph",
         });
       });
+      this._button(actions, "✎", DeepRead.bilingual("写我的理解", "Add my understanding"), () => {
+        this.noteEditing = key;
+        this._invalidate(key);
+      });
       this._button(actions, "AI", DeepRead.t("card.askAI"), () => {
         session.askAI({ text: paragraph.paragraphText || "", pageIndex: paragraph.pageIndex });
       });
@@ -424,7 +498,7 @@
 
       const points = paragraph.points || [];
       if (points.length) {
-        const list = el(doc, "ul");
+        const list = el(doc, "ul", "dr-points");
         for (const point of points) {
           const li = el(doc, "li");
           li.dataset.level = String(session.pointLevel(point));
@@ -443,19 +517,92 @@
         }
         node.append(list);
       }
+
+      // The reader's own understanding: always expanded, never folded.
+      const note = session.paragraphNote(key);
+      if (this.noteEditing === key) {
+        node.append(this._noteEditor(note, (value) => {
+          this.noteEditing = null;
+          session.setParagraphNote(key, value);
+          this._invalidate(key);
+        }, () => {
+          this.noteEditing = null;
+          this._invalidate(key);
+        }));
+      }
+      else if (note) {
+        const block = el(doc, "div", "dr-note");
+        block.append(el(doc, "div", "dr-note-label", DeepRead.bilingual("我的理解", "My understanding")), el(doc, "div", "dr-note-text", note));
+        block.title = DeepRead.bilingual("单击编辑", "Click to edit");
+        block.addEventListener("click", (e) => {
+          e.stopPropagation();
+          this.noteEditing = key;
+          this._invalidate(key);
+        });
+        node.append(block);
+      }
+
+      // Flashcards that belong to this paragraph sit right here, next to it.
+      const attached = session.flashcardsForParagraph(key);
+      if (attached.length) {
+        const box = el(doc, "div", "dr-attached");
+        for (const card of attached) box.append(this._flashcardBlock(card, key));
+        node.append(box);
+      }
       node.onpointerenter = () => this.overlay._drawHover(paragraph);
       node.onpointerleave = () => this.overlay._clearTransient();
     }
 
+    _noteEditor(value, onSave, onCancel) {
+      const doc = this.readerDoc;
+      const wrap = el(doc, "div", "dr-note dr-note-editing");
+      wrap.append(el(doc, "div", "dr-note-label", DeepRead.bilingual("我的理解", "My understanding")));
+      const area = el(doc, "textarea");
+      area.rows = 3;
+      area.placeholder = DeepRead.bilingual("写下你对这段的理解、疑问或联想…（Ctrl+Enter 保存）", "Your understanding, questions or connections… (Ctrl+Enter to save)");
+      area.value = value || "";
+      area.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          onSave(area.value);
+        }
+        else if (e.key === "Escape") onCancel();
+      });
+      area.addEventListener("input", () => this.schedule(true));
+      const buttons = el(doc, "div", "dr-fc-buttons");
+      this._button(buttons, DeepRead.bilingual("保存", "Save"), "", () => onSave(area.value)).classList.add("dr-primary");
+      this._button(buttons, DeepRead.bilingual("取消", "Cancel"), "", () => onCancel());
+      wrap.append(area, buttons);
+      wrap.addEventListener("click", (e) => e.stopPropagation());
+      setTimeout(() => area.focus(), 0);
+      return wrap;
+    }
+
     _fillFlashcard(node, card) {
+      node.classList.add("dr-flash");
+      node.append(this._flashcardBlock(card, null));
+      node.onpointerenter = () => {
+        const rect = DeepRead.Overlay.unionRect(card.rects || []);
+        if (rect) this.overlay._drawHover({ pageIndex: card.pageIndex, bbox: rect, rects: card.rects, points: [] });
+      };
+      node.onpointerleave = () => this.overlay._clearTransient();
+    }
+
+    /**
+     * One flashcard: question, folded AI answer (click to reveal), and the reader's own
+     * understanding, which is always shown. `ownerKey` is the paragraph card it sits in (or null).
+     */
+    _flashcardBlock(card, ownerKey) {
       const doc = this.readerDoc;
       const session = this.session;
-      node.classList.add("dr-flash");
+      const cardKey = ownerKey || `f_${card.id}`;
+      const block = el(doc, "div", ownerKey ? "dr-fc dr-fc-attached" : "dr-fc");
       const head = el(doc, "div", "dr-rhead");
       head.append(el(doc, "div", "dr-fc-label", DeepRead.bilingual("闪卡", "FLASHCARD") + (card._busy ? ` · ${card._busy}` : "")));
       const actions = el(doc, "div", "dr-ractions");
       head.append(actions);
-      node.append(head);
+      block.append(head);
 
       if (session.editingFlashcard === card.id) {
         const q = el(doc, "textarea");
@@ -466,10 +613,14 @@
         a.rows = 3;
         a.placeholder = DeepRead.bilingual("答案（可留空，或点 AI 回答）", "Answer (optional, or ask AI)");
         a.value = card.answer || "";
+        const n = el(doc, "textarea");
+        n.rows = 3;
+        n.placeholder = DeepRead.bilingual("我的理解（始终展开显示）", "My understanding (always shown)");
+        n.value = card.note || "";
         const buttons = el(doc, "div", "dr-fc-buttons");
         const save = this._button(buttons, DeepRead.bilingual("保存", "Save"), "", async () => {
           session.editingFlashcard = null;
-          await session.saveFlashcard({ ...card, question: q.value.trim(), answer: a.value.trim() });
+          await session.saveFlashcard({ ...card, question: q.value.trim(), answer: a.value.trim(), note: n.value.trim() });
         });
         save.classList.add("dr-primary");
         this._button(buttons, DeepRead.bilingual("AI 回答", "AI answer"), "", async (e) => {
@@ -492,19 +643,20 @@
         });
         this._button(buttons, DeepRead.bilingual("取消", "Cancel"), "", () => {
           session.editingFlashcard = null;
-          if (!card.question && !card.answer) session.deleteFlashcard(card.id);
+          if (!card.question && !card.answer && !card.note) session.deleteFlashcard(card.id);
           else session._emit("flashcards", { id: card.id });
         });
-        for (const field of [q, a]) {
+        for (const field of [q, a, n]) {
           field.addEventListener("input", () => this.schedule(true));
           field.addEventListener("keydown", (e) => e.stopPropagation());
         }
-        node.append(q, a, buttons);
-        setTimeout(() => q.focus(), 0);
-        return;
+        block.append(q, a, n, buttons);
+        block.addEventListener("click", (e) => e.stopPropagation());
+        setTimeout(() => (card.question ? n : q).focus(), 0);
+        return block;
       }
 
-      this._button(actions, "✎", DeepRead.bilingual("编辑", "Edit"), () => {
+      this._button(actions, "✎", DeepRead.bilingual("编辑 / 写我的理解", "Edit / add my understanding"), () => {
         session.editingFlashcard = card.id;
         session._emit("flashcards", { id: card.id });
       });
@@ -514,29 +666,30 @@
           session.deleteFlashcard(card.id);
         }
       });
-      node.append(el(doc, "div", "dr-fc-q", card.question || (card._busy ? "…" : DeepRead.bilingual("（无问题，点 ✎ 编辑）", "(no question — click ✎)"))));
+      block.append(el(doc, "div", "dr-fc-q", card.question || (card._busy ? "…" : DeepRead.bilingual("（无问题，点 ✎ 编辑）", "(no question — click ✎)"))));
       const flipped = session.flipped?.has(card.id);
       if (flipped && card.answer) {
         const answer = el(doc, "div", "dr-fc-a");
         answer.append(DeepRead.Markdown.render(doc, card.answer, answer));
-        node.append(answer);
+        block.append(answer);
       }
       else if (card.answer) {
-        node.append(el(doc, "div", "dr-muted", DeepRead.bilingual("点击查看答案", "Click to reveal the answer")));
+        block.append(el(doc, "div", "dr-muted dr-fc-reveal", DeepRead.bilingual("▸ 点击查看答案", "▸ Click to reveal the answer")));
       }
-      node.onclick = (e) => {
-        if (e.target.closest("button, a, textarea")) return;
+      if (card.note) {
+        const note = el(doc, "div", "dr-note dr-fc-note");
+        note.append(el(doc, "div", "dr-note-label", DeepRead.bilingual("我的理解", "My understanding")), el(doc, "div", "dr-note-text", card.note));
+        block.append(note);
+      }
+      block.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (e.target.closest("button, a, textarea, .dr-note")) return;
         session.flipped = session.flipped || new Set();
         if (session.flipped.has(card.id)) session.flipped.delete(card.id);
         else session.flipped.add(card.id);
-        this.cards.get(`f_${card.id}`) && (this.cards.get(`f_${card.id}`).sig = null);
-        this.schedule(true);
-      };
-      node.onpointerenter = () => {
-        const rect = DeepRead.Overlay.unionRect(card.rects || []);
-        if (rect) this.overlay._drawHover({ pageIndex: card.pageIndex, bbox: rect, rects: card.rects, points: [] });
-      };
-      node.onpointerleave = () => this.overlay._clearTransient();
+        this._invalidate(cardKey);
+      });
+      return block;
     }
 
     /** Highlight the rail card of a paragraph hovered in the PDF. */

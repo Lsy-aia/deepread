@@ -1,6 +1,6 @@
 {
   "name": "zotero-deepread",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "DeepRead: AI reading assistant plugin for Zotero 7-10",
@@ -10,6 +10,7 @@
     "build": "node scripts/build.mjs"
   },
   "devDependencies": {
+    "@xmldom/xmldom": "0.9.12",
     "katex": "0.16.47",
     "marked": "18.0.14"
   }

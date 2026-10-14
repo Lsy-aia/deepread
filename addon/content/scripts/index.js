@@ -14,6 +14,8 @@
     "l10n.js",
     "services/store.js",
     "services/llm.js",
+    "services/textLayerParser.js",
+    "services/grobidParser.js",
     "services/parser.js",
     "services/flashcards.js",
     "services/github.js",

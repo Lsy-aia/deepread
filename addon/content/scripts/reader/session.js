@@ -152,6 +152,7 @@
       this.flipped = new Set();
       this.on((event) => {
         if (event === "change" || event === "flashcards") this.rail?.refresh();
+        if (event === "change") for (const card of this.flashcards || []) delete card._autoKey;
       });
     }
 
@@ -337,7 +338,7 @@
         parsePDF: async ({ onStatus } = {}) => {
           const filePath = await this.item.getFilePathAsync();
           if (!filePath) throw new Error(DeepRead.bilingual("找不到 PDF 文件", "PDF file not found"));
-          return DeepRead.Parser.parsePDF({ filePath, attachmentKey: this.key, onStatus, signal });
+          return DeepRead.Parser.parsePDF({ filePath, attachmentKey: this.key, onStatus, signal, pdfApp: adapter });
         },
         onProgress: onProgress || (() => {}),
         notify: (message, type) => this._notify(message, type),
@@ -570,13 +571,74 @@
       this.rail?.refresh();
     }
 
+    /* ---------- the reader's own understanding ---------- */
+
+    paragraphNote(key) {
+      return this.userState.notes?.[key]?.text || "";
+    }
+
+    setParagraphNote(key, text) {
+      const notes = { ...(this.userState.notes || {}) };
+      const value = String(text || "").trim();
+      if (value) notes[key] = { text: value, updatedAt: new Date().toISOString() };
+      else delete notes[key];
+      this.userState.notes = notes;
+      this._saveUserStateSoon();
+      this.rail?.refresh();
+      this._emit("notes", { key });
+    }
+
+    /** Paragraph (as "p_<page>_<index>") whose text best overlaps the given rects, or "". */
+    paragraphKeyForRects(pageIndex, rects) {
+      const page = (this.data?.hierarchicalData || []).find((p) => p.pageIndex === pageIndex);
+      if (!page || !Array.isArray(rects) || !rects.length) return "";
+      const area = (r) => Math.max(0, r[2] - r[0]) * Math.max(0, r[3] - r[1]);
+      const inter = (a, b) => area([Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])]);
+      let best = "";
+      let bestScore = 0;
+      for (const paragraph of page.paragraphs || []) {
+        let score = 0;
+        for (const r of rects) for (const pr of paragraph.rects || []) score += inter(r, pr);
+        if (score > bestScore) {
+          bestScore = score;
+          best = `p_${pageIndex}_${paragraph.paragraphIndex}`;
+        }
+      }
+      return best;
+    }
+
+    /** [{ key, pageIndex, summary, note }] for every paragraph with a note, in reading order. */
+    paragraphNotesList() {
+      const out = [];
+      for (const page of this.data?.hierarchicalData || []) {
+        for (const paragraph of page.paragraphs || []) {
+          const key = `p_${page.pageIndex}_${paragraph.paragraphIndex}`;
+          const note = this.paragraphNote(key);
+          if (note) out.push({ key, pageIndex: page.pageIndex, summary: this.paragraphSummary({ ...paragraph, pageIndex: page.pageIndex }), note });
+        }
+      }
+      return out;
+    }
+
+    flashcardsForParagraph(key) {
+      return (this.flashcards || []).filter((card) => this.flashcardParagraphKey(card) === key);
+    }
+
+    flashcardParagraphKey(card) {
+      if (card.paragraphKey) return card.paragraphKey;
+      // Older cards without an explicit link: attach by position.
+      if (!card._autoKey) card._autoKey = this.paragraphKeyForRects(card.pageIndex, card.rects) || "-";
+      return card._autoKey === "-" ? "" : card._autoKey;
+    }
+
     /**
      * Create a flashcard anchored at `rects`; if an LLM is configured, generate question/answer
      * from the quote in the background, otherwise open it for editing.
      */
-    async createFlashcard({ pageIndex, rects, quote, source = "selection" }) {
+    async createFlashcard({ pageIndex, rects, quote, source = "selection", paragraphKey }) {
       const card = await this.saveFlashcard({
         pageIndex, rects: rects || [], quote: String(quote || "").trim().slice(0, 4000), question: "", answer: "", source,
+        paragraphKey: paragraphKey || this.paragraphKeyForRects(pageIndex, rects),
       });
       if (!this.rail?.enabled) DeepRead.Panes.reveal(this.reader, "flashcards");
       if (!DeepRead.LLM.isConfigured() || !card.quote) {

@@ -60,6 +60,9 @@
 .deepread-card .dr-point-summary { font-weight: 500; }
 .deepread-card .dr-point-translation { color: #424a53; margin-top: 2px; }
 .deepread-card .dr-foot { margin-top: 4px; font-size: 11px; color: #8c959f; }
+.deepread-card .dr-hnote { margin-top: 6px; padding: 4px 8px; border-radius: 6px; border-left: 3px solid #10b981;
+  background: rgba(16,185,129,0.08); white-space: pre-wrap; }
+.deepread-card .dr-hnote-label { font-size: 11px; font-weight: 700; color: #047857; }
 :root[data-color-scheme="dark"] .deepread-card { background: #2a2d32; color: #e6e6e6; border-color: rgba(255,255,255,0.12); }
 :root[data-color-scheme="dark"] .deepread-card .dr-actions button { color: #a0a7b0; }
 :root[data-color-scheme="dark"] .deepread-card .dr-actions button:hover { background: rgba(255,255,255,0.08); color: #fff; }
@@ -552,6 +555,12 @@
         list.append(li);
       }
       if (list.childNodes.length) card.append(list);
+      const note = this.session.paragraphNote?.(`p_${paragraph.pageIndex}_${paragraph.paragraphIndex}`);
+      if (note) {
+        const block = el(doc, "div", "dr-hnote");
+        block.append(el(doc, "div", "dr-hnote-label", DeepRead.bilingual("我的理解", "My understanding")), el(doc, "div", "", note));
+        card.append(block);
+      }
       card.append(el(doc, "div", "dr-foot", `p. ${paragraph.pageIndex + 1} · Alt: ${DeepRead.t("card.translation")}`));
 
       card.hidden = false;

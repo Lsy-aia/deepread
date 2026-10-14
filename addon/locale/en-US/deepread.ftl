@@ -52,10 +52,17 @@ deepread-pref-llm-extraheaders = Extra headers (JSON, optional)
 
 deepread-pref-parser-title = PDF structure parsing
 deepread-pref-parser-provider = Parser service
+deepread-pref-parser-provider-builtin =
+    .label = Built-in (PDF text layer, no service — recommended)
+deepread-pref-parser-provider-grobid =
+    .label = GROBID local service (lightweight, CPU)
 deepread-pref-parser-provider-mineru =
     .label = MinerU official API
 deepread-pref-parser-provider-selfhost =
     .label = Self-hosted / third-party MinerU-compatible service
+deepread-pref-parser-builtin-hint = Uses the text layer embedded in the PDF to recognize paragraphs, headings, figures and formulas. Fast, free, and no file upload. Suits most born-digital papers; scanned PDFs have no text layer, so Deep Read cannot process them. For complex tables or many formulas, try GROBID or MinerU instead.
+deepread-pref-parser-grobid-hint = GROBID is an open-source parsing service built for academic papers. It needs only a CPU and about 1–2 GB of RAM. Start it with Docker by running scripts/grobid.sh start in the plugin source directory.
+deepread-pref-parser-grobid-url = Service URL
 deepread-pref-parser-mineru-hint = Get a token at https://mineru.net/apiManage.
 deepread-pref-parser-token = Token
 deepread-pref-parser-mineru-model = Parsing model

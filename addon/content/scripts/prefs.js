@@ -42,7 +42,7 @@ DeepRead.prefs = {
 
   parserConfig() {
     return {
-      provider: this.get("parser.provider") || "mineru",
+      provider: this.get("parser.provider") || "builtin",
       mineruToken: String(this.get("parser.mineruToken") || "").trim(),
       mineruModel: this.get("parser.mineruModel") || "pipeline",
       mineruLanguage: this.get("parser.mineruLanguage") || "en",
@@ -52,6 +52,7 @@ DeepRead.prefs = {
       selfHostURL: String(this.get("parser.selfHostURL") || "").trim().replace(/\/+$/, ""),
       selfHostToken: String(this.get("parser.selfHostToken") || "").trim(),
       selfHostBackend: this.get("parser.selfHostBackend") || "pipeline",
+      grobidURL: String(this.get("parser.grobidURL") || "http://127.0.0.1:8070").trim().replace(/\/+$/, ""),
     };
   },
 

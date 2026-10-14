@@ -50,11 +50,18 @@
         provider = Zotero.Prefs.get(PREFIX + "parser.provider", true);
       } catch (e) {}
     }
-    var selfhost = provider === "selfhost";
-    var m = $("deepread-pref-parser-mineru");
-    var s = $("deepread-pref-parser-selfhost");
-    if (m) m.hidden = selfhost;
-    if (s) s.hidden = !selfhost;
+    var known = ["builtin", "grobid", "mineru", "selfhost"];
+    if (known.indexOf(provider) < 0) provider = "builtin";
+    var blocks = {
+      builtin: "deepread-pref-parser-builtin",
+      grobid: "deepread-pref-parser-grobid",
+      mineru: "deepread-pref-parser-mineru",
+      selfhost: "deepread-pref-parser-selfhost",
+    };
+    for (var k in blocks) {
+      var el = $(blocks[k]);
+      if (el) el.hidden = k !== provider;
+    }
   }
 
 

@@ -19,7 +19,7 @@ async function startup({ id, version, rootURI }) {
   // Privileged globals the bootstrap sandbox does not expose by default.
   const globalNames = [
     "fetch", "URL", "URLSearchParams", "TextDecoder", "TextEncoder", "Blob", "FormData",
-    "AbortController", "crypto", "btoa", "atob", "IOUtils", "PathUtils", "structuredClone",
+    "AbortController", "crypto", "btoa", "atob", "IOUtils", "PathUtils", "structuredClone", "DOMParser",
   ];
   for (const name of globalNames) {
     try {
