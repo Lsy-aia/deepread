@@ -19,7 +19,10 @@ mkdir -p "$PROFILE/extensions" "$DATA" "$BASE/shots"
 # Sideload freshly built XPIs (Gecko 140 no longer honours developer proxy files).
 rm -f "$PROFILE/extensions/deepread@lsy-aia.github.io" "$PROFILE/extensions/deepread-e2e@lsy-aia.github.io"
 rm -f "$PROFILE/extensions/"*.xpi
-if [ -n "${E2E_ADDON_VERSION:-}" ]; then
+if [ -n "${E2E_BASE_XPI:-}" ]; then
+  # Start from a released build (used to test in-place upgrades, see test/e2e/upgrade.js).
+  cp "$E2E_BASE_XPI" "$PROFILE/extensions/deepread@lsy-aia.github.io.xpi"
+elif [ -n "${E2E_ADDON_VERSION:-}" ]; then
   # Install the add-on under a different version (used to test self-updating).
   TMP_ADDON="$BASE/addon-versioned"; rm -rf "$TMP_ADDON"; cp -r "$REPO/addon" "$TMP_ADDON"
   sed -i "s/\"version\": \"[0-9.]*\"/\"version\": \"$E2E_ADDON_VERSION\"/" "$TMP_ADDON/manifest.json"

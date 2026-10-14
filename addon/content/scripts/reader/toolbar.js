@@ -195,10 +195,58 @@
           DeepRead.log("renderToolbar failed", e?.stack || String(e));
         }
       }, pluginID);
-      // Readers that were already open when the plugin started.
+      // Readers that were already open when the plugin started (e.g. after an in-place update)
+      // never re-dispatch renderToolbar: their section is empty or still holds the previous
+      // version's buttons (wired to unloaded code). Draw a fresh toolbar into each.
       for (const reader of Zotero.Reader._readers || []) {
-        if (reader.type === "pdf") DeepRead.Session.forReader(reader)?.init();
+        if (reader.type !== "pdf") continue;
+        renderIntoOpenReader(reader);
+        DeepRead.Session.forReader(reader)?.init();
+      }
+    },
+
+    /** Plugin shutdown: take our buttons out of open readers (Zotero only drops the listener). */
+    unregister() {
+      for (const reader of Zotero.Reader._readers || []) {
+        const doc = reader._iframeWindow?.document;
+        if (!doc) continue;
+        removeToolbars(doc);
+        doc.getElementById("deepread-toolbar-css")?.remove();
       }
     },
   };
+
+  function removeToolbars(doc) {
+    for (const node of doc.querySelectorAll(".deepread-toolbar")) {
+      const section = node.parentNode;
+      node.remove();
+      if (section?.classList?.contains("section") && !section.childNodes.length) section.remove();
+    }
+  }
+
+  /** Same as Zotero's CustomSections append for the toolbar ("div.end > div.custom-sections"). */
+  function renderIntoOpenReader(reader) {
+    try {
+      const win = reader._iframeWindow;
+      const doc = (win?.wrappedJSObject || win)?.document;
+      if (!doc) return;
+      const sections = doc.querySelector(".toolbar .end > .custom-sections") || doc.querySelector(".end > .custom-sections");
+      if (!sections) return; // toolbar not mounted yet: it will dispatch renderToolbar itself
+      removeToolbars(doc);
+      doc.getElementById("deepread-toolbar-css")?.remove(); // may be an older version's styles
+      render({
+        reader,
+        doc,
+        append: (...nodes) => {
+          const section = doc.createElement("div");
+          section.className = "section";
+          section.append(...nodes);
+          sections.append(section);
+        },
+      });
+    }
+    catch (e) {
+      DeepRead.log("toolbar render into open reader failed", e?.stack || String(e));
+    }
+  }
 })();

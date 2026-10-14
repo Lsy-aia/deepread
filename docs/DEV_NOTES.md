@@ -224,3 +224,10 @@ v0.4–v0.5 (ReadFlow client, built-in full-document translation, translated-PDF
 - Synthetic events don't reach these privileged listeners; `test/e2e/interact.js` calls the handlers directly.
 - Split rails: a page uses the left rail only if it has narrow body-text blocks on both halves
   (`rail._isTwoColumn`), so headings on one-column pages stay on the right.
+- Reader toolbar and in-place updates: the reader dispatches `renderToolbar` only when its toolbar mounts
+  (CustomSections effect), and `registerEventListener` does not re-dispatch for open readers. After an
+  in-place update (auto-update / 检查更新) open tabs kept the previous version's buttons, wired to unloaded code.
+  `Toolbar.register` therefore draws a fresh toolbar into every open reader (`div.end > div.custom-sections`,
+  replacing any older `.deepread-toolbar`), and `Toolbar.unregister` (shutdown) removes ours.
+  Test: `E2E_BASE_XPI=<released.xpi> E2E_UPDATE_XPI=<new.xpi> scripts/e2e.sh test/e2e/upgrade.js`;
+  `test/e2e/restart.js` covers disable/enable.

@@ -96,6 +96,7 @@
   DeepRead.shutdown = async function () {
     DeepRead.log("shutting down");
     DeepRead.Session.destroyAll();
+    DeepRead.Toolbar.unregister();
     for (const win of windows) {
       win.document.getElementById("deepread-panes-css")?.remove();
       win.document.getElementById("deepread-katex-css")?.remove();
