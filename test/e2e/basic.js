@@ -149,22 +149,23 @@ E2E.run = async function () {
   });
   await shot("reader-hover");
 
-  // Alt-hover: in-place translation over a body paragraph.
+  // Hover: in-place translation over a body paragraph; Alt shows the original.
   const bodyPage = hd.find((p) => p.pageIndex === 1) || target;
   const bodyPara = bodyPage.paragraphs.find((x) => x.paragraphType === "text" && (x.points || []).length && (x.paragraphText || "").length > 300);
   if (bodyPara) {
     await session.navigateToParagraph({ ...bodyPara, pageIndex: bodyPage.pageIndex });
     await sleep(1500);
     overlay._hideCard(true);
+    const hoverPara = [...(overlay.pages.get(bodyPage.pageIndex) || [])].find((p) => p.paragraphIndex === bodyPara.paragraphIndex);
+    overlay._setHover(hoverPara);
+    await sleep(500);
+    const boxes = overlay.pdfDoc.querySelectorAll(".dr-translation").length;
+    await shot("reader-hover-translation");
     overlay.altDown = true;
-    const altPara = [...(overlay.pages.get(bodyPage.pageIndex) || [])].find((p) => p.paragraphIndex === bodyPara.paragraphIndex);
-    overlay.hoverPara = altPara;
-    overlay._drawHover(altPara);
-    await sleep(300);
-    step("alt-translation", { boxes: overlay.pdfDoc.querySelectorAll(".dr-translation").length });
-    await shot("reader-alt-translation");
+    overlay._drawHover(hoverPara);
+    step("hover-translation", { boxes, withAlt: overlay.pdfDoc.querySelectorAll(".dr-translation").length });
     overlay.altDown = false;
-    overlay._clearTransient();
+    overlay._setHover(null);
   }
 
   // Chat (streamed from the fake LLM).

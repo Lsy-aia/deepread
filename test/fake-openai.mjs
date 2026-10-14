@@ -22,7 +22,6 @@ function lastUserText(messages) {
 }
 
 function detect(t) {
-  if (/待翻译 items（JSON）：/.test(t)) return 'translate';
   if (/article_summary field|包含 article_summary 字段/.test(t)) return 'article_summary';
   if (/outline field|包含 outline 字段/.test(t)) return 'outline';
   if (/point_split/.test(t) && /(Paragraph list|段落列表):/.test(t)) return 'page';
@@ -48,19 +47,28 @@ function parsePageParagraphs(t) {
   }
   return out;
 }
+// Chinese-looking stand-in translation, about as long as a real one (~1 CJK char per 3 source chars).
+const ZH = '本文提出的方法通过注意力机制直接建模序列中任意两个位置之间的依赖关系，不再依赖循环结构，因此可以在训练时充分并行，并在机器翻译任务上取得更好的效果';
+function zhLike(source, k) {
+  const n = Math.max(8, Math.round(String(source).length / 3.2));
+  let out = '';
+  while (out.length < n) out += ZH;
+  out = out.slice(0, n).replace(/[，。]$/, '');
+  return (k === 1 ? out.slice(0, Math.floor(n / 2)) + '，其复杂度为 $O(n^2 \\cdot d)$，' + out.slice(Math.floor(n / 2)) : out) + '。';
+}
+
 function buildPage(t) {
   const paras = parsePageParagraphs(t);
   const paragraphs = paras.map((p) => {
     const split = [];
     for (let i = 0; i < p.n; i += 2) split.push(i + 1 < p.n ? [i, i + 1] : [i]);
-    const clip = (s, k) => (s.length > k ? s.slice(0, k) + '...' : s);
     return {
       id: p.id,
       paragraph_summary: `Fake summary of ${p.id}`,
       importance_level: 2,
       point_split: split,
       point_summaries: split.map((g, i) => `Fake point ${i + 1} of ${p.id}`),
-      point_translations: split.map((g) => '【译】' + g.map((k) => clip(p.texts[k] || '', 60)).join(' ')),
+      point_translations: split.map((g, i) => (i === 0 ? '【译】' : '') + g.map((k) => zhLike(p.texts[k] || '', k)).join('')),
     };
   });
   return { obj: { paragraphs }, info: `paragraphs=${paras.length}` };
@@ -128,18 +136,6 @@ function buildOutline(t) {
 }
 
 // ---- author filter: keep everything ----
-// ---- full-document translation (DeepRead.Translator protocol) ----
-function buildTranslate(t) {
-  const line = t.split('\n').find((l) => l.startsWith('{"items":')) || '{"items":[]}';
-  const { items } = JSON.parse(line);
-  const translations = items.map((it) => {
-    const tokens = String(it.source_text).match(/<[futnvc]\d+-[0-9a-z]{3}\/>/g) || [];
-    const head = String(it.source_text).replace(/<[^>]+>/g, '').trim().split(/\s+/).slice(0, 2).join(' ');
-    return { item_id: it.item_id, translated_text: `【译文】这是第${it.item_id}块的中文翻译（${head}）${tokens.join(' ')}，模拟结果。`, decision: 'translate' };
-  });
-  return { obj: { translations }, info: `items=${items.length}` };
-}
-
 function buildFilter() { return { obj: { indices: [] }, info: 'keep all' }; }
 
 function chatAnswer() {
@@ -181,7 +177,7 @@ http.createServer(async (req, res) => {
       content = JSON.stringify({ question: '这段话为什么重要？(fake)', answer: '因为它提出了 **注意力** 机制，复杂度为 $O(n^2)$。(fake)' });
     }
     else {
-      const r = { page: buildPage, article_summary: buildArticle, outline: buildOutline, filter: buildFilter, translate: buildTranslate }[kind](text);
+      const r = { page: buildPage, article_summary: buildArticle, outline: buildOutline, filter: buildFilter }[kind](text);
       content = JSON.stringify(r.obj);
       info = r.info;
     }

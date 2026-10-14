@@ -64,27 +64,6 @@
     }
   }
 
-  // ReadFlow controls other than the enable checkbox are disabled while ReadFlow is off.
-  var READFLOW_DEPENDENT = [
-    "deepread-pref-readflow-autostart",
-    "deepread-pref-readflow-apppath",
-    "deepread-pref-readflow-baseurl",
-    "deepread-pref-readflow-apikey",
-    "deepread-pref-readflow-mode",
-    "deepread-pref-readflow-ocr",
-    "deepread-pref-readflow-test",
-  ];
-
-  function updateReadflowEnabled() {
-    var enableBox = $("deepread-pref-readflow-enabled");
-    var enabled = !!(enableBox && enableBox.checked);
-    for (var i = 0; i < READFLOW_DEPENDENT.length; i++) {
-      var el = $(READFLOW_DEPENDENT[i]);
-      if (el) el.disabled = !enabled;
-    }
-  }
-
-
   function wireTest(btnId, statusId, getTarget) {
     var btn = $(btnId);
     var status = $(statusId);
@@ -179,16 +158,6 @@
     setTimeout(updateProviderVisibility, 0);
     setTimeout(updateProviderVisibility, 300);
 
-    var readflowEnable = $("deepread-pref-readflow-enabled");
-    if (readflowEnable) {
-      readflowEnable.addEventListener("command", updateReadflowEnabled);
-      readflowEnable.addEventListener("change", updateReadflowEnabled);
-    }
-    updateReadflowEnabled();
-    // Checkbox state is synced from the pref slightly after load.
-    setTimeout(updateReadflowEnabled, 0);
-    setTimeout(updateReadflowEnabled, 300);
-
     wireUpdate();
 
     wireTest("deepread-pref-llm-test", "deepread-pref-llm-status", function () {
@@ -196,9 +165,6 @@
     });
     wireTest("deepread-pref-parser-test", "deepread-pref-parser-status", function () {
       return Zotero.DeepRead && Zotero.DeepRead.Parser;
-    });
-    wireTest("deepread-pref-readflow-test", "deepread-pref-readflow-status", function () {
-      return Zotero.DeepRead && Zotero.DeepRead.ReadFlow;
     });
   }
 

@@ -55,6 +55,7 @@
 .deepread-rail .dr-fc-a p { margin: 0.2em 0; }
 .deepread-rail .dr-muted { color: var(--fill-secondary, #6b7280); }
 .deepread-rail .dr-rcard:hover { z-index: 5; }
+.deepread-rail .dr-rcard.dr-open { z-index: 6; box-shadow: 0 0 0 2px rgba(251,191,36,0.95), 0 6px 18px rgba(0,0,0,0.14); }
 .deepread-rail .dr-rcard.dr-compact { padding-block: 3px; }
 .deepread-rail .dr-rcard.dr-compact .dr-rsummary { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .deepread-rail .dr-rcard.dr-compact .dr-points { display: none; }
@@ -97,6 +98,8 @@
       this.session = session;
       this.cards = new Map(); // key → { el, height, width, anchor, kind, data, sig }
       this.expanded = new Set();
+      this.focusKey = null; // card opened by clicking its paragraph in the PDF
+      this.drafts = new Map(); // unsaved editor text, kept when a card re-renders (e.g. it is closed)
       this.attached = false;
       this._cleanup = [];
       this._raf = null;
@@ -118,7 +121,67 @@
       if (!geom) return "right";
       const pct = this.overlay._toPercent(geom, rect);
       if (pct.width > 60) return "right"; // full-width (single-column) block
+      if (!this._isTwoColumn(pageIndex, geom)) return "right"; // e.g. a short heading on a one-column page
       return pct.left + pct.width / 2 < 50 ? "left" : "right";
+    }
+
+    /** A page is two-column when it has narrow body-text blocks on both halves. */
+    _isTwoColumn(pageIndex, geom) {
+      if (this._columnsFor !== this.overlay.pages) {
+        this._columnsFor = this.overlay.pages;
+        this._columns = new Map();
+      }
+      if (!this._columns.has(pageIndex)) {
+        let left = 0;
+        let right = 0;
+        for (const paragraph of this.overlay.pages.get(pageIndex) || []) {
+          if (!String(paragraph.paragraphType || "text").startsWith("text") || !paragraph.bbox) continue;
+          const pct = this.overlay._toPercent(geom, paragraph.bbox);
+          if (pct.width > 60) continue;
+          if (pct.left + pct.width / 2 < 50) left++;
+          else right++;
+        }
+        this._columns.set(pageIndex, left > 0 && right > 0);
+      }
+      return this._columns.get(pageIndex);
+    }
+
+    /** Expanded by the reader (summary click) or opened by clicking the paragraph. */
+    isOpen(key) {
+      return this.expanded.has(key) || this.focusKey === key;
+    }
+
+    /** Open a paragraph's card (full card, next to its paragraph, scrolled into view); null closes it. */
+    openParagraph(paragraph) {
+      const key = paragraph ? `p_${paragraph.pageIndex}_${paragraph.paragraphIndex}` : null;
+      if (key === this.focusKey) {
+        if (key) this._revealPending = true;
+        this.schedule();
+        return;
+      }
+      const previous = this.focusKey;
+      this.focusKey = key;
+      if (key && this.session.isCardHidden?.(key)) this.session.setCardHidden(key, false);
+      if (previous) this._invalidate(previous);
+      if (key) {
+        this._revealPending = true;
+        this._invalidate(key);
+      }
+    }
+
+    /** After layout: scroll the PDF so the opened card is fully visible (its paragraph stays on screen). */
+    _revealFocus(railHeight) {
+      this._revealPending = false;
+      const card = this.cards.get(this.focusKey);
+      if (!card || card.el.hidden) return;
+      const top = card.el.offsetTop;
+      const bottom = top + card.el.offsetHeight;
+      let delta = 0;
+      if (bottom > railHeight - 8) delta = Math.min(bottom - (railHeight - 8), top - 8);
+      else if (top < 8) delta = top - 8;
+      if (Math.abs(delta) < 2) return;
+      const container = this.app?.pdfViewer?.container;
+      if (container) container.scrollTop += delta;
     }
 
     _hasLeftItems() {
@@ -369,11 +432,27 @@
           const range = this._pageRange(group.pageIndex);
           const compactKey = `${side}:${group.pageIndex}`;
           const stack = () => {
+            const heights = group.items.map((item) => this._ensureCard(item, width).height);
+            const open = group.items.findIndex((item) => item.key === this.focusKey);
             let b = bottom;
-            for (const item of group.items) {
-              const card = this._ensureCard(item, width);
-              item.top = Math.max(item.anchor, b + GAP);
-              b = item.top + card.height;
+            if (open < 0) {
+              group.items.forEach((item, i) => {
+                item.top = Math.max(item.anchor, b + GAP);
+                b = item.top + heights[i];
+              });
+              return b;
+            }
+            // Keep the opened card beside its paragraph: cards above it stack upwards from it,
+            // cards below it downwards; shift down only if the stack would hit the previous page.
+            const items = group.items;
+            items[open].top = Math.max(items[open].anchor, bottom + GAP);
+            for (let i = open - 1; i >= 0; i--) items[i].top = Math.min(items[i].anchor, items[i + 1].top - GAP - heights[i]);
+            const shift = Math.max(0, bottom + GAP - items[0].top);
+            for (let i = 0; i <= open; i++) items[i].top += shift;
+            b = items[open].top + heights[open];
+            for (let i = open + 1; i < items.length; i++) {
+              items[i].top = Math.max(items[i].anchor, b + GAP);
+              b = items[i].top + heights[i];
             }
             return b;
           };
@@ -402,6 +481,7 @@
         }
       }
       this._remeasure = false;
+      if (this._revealPending) this._revealFocus(railHeight);
       this._drawLinks(this.svg, links.right, "right");
       if (this.leftRoot) this._drawLinks(this.leftRoot._svg, links.left, "left");
     }
@@ -420,7 +500,7 @@
         dot.setAttribute("r", "2");
         dot.setAttribute("fill", color);
         svg.append(dot);
-        if (top - anchor > 3) {
+        if (Math.abs(top - anchor) > 3) {
           const path = this.readerDoc.createElementNS(SVG_NS, "path");
           path.setAttribute("d", `M${x} ${anchor + 4} L${x} ${top + 10} L${x2} ${top + 10}`);
           path.setAttribute("fill", "none");
@@ -442,7 +522,7 @@
       const p = item.data;
       const levels = (p.points || []).map((pt) => this.session.pointLevel(pt)).join("");
       const attached = this.session.flashcardsForParagraph(item.key).map((c) => this._cardSignature(c)).join("||");
-      return `p|${this.session.paragraphSummary(p)}|${levels}|${this.expanded.has(item.key)}|${this.overlay.options.translationPopup}`
+      return `p|${this.session.paragraphSummary(p)}|${levels}|${this.isOpen(item.key)}|${this.focusKey === item.key}|${this.overlay.options.translationPopup}`
         + `|${this.compactPages?.has(`${item.side || "right"}:${item.pageIndex}`) ? "c" : ""}`
         + `|${this.session.paragraphNote(item.key)}|${this.noteEditing === item.key}|${attached}`;
     }
@@ -495,15 +575,19 @@
     _fillParagraph(node, key, paragraph) {
       const doc = this.readerDoc;
       const session = this.session;
-      node.classList.toggle("dr-expanded", this.expanded.has(key));
+      node.classList.toggle("dr-expanded", this.isOpen(key));
+      node.classList.toggle("dr-open", this.focusKey === key);
       const side = this._sideOfKey?.get(key) || "right";
-      node.classList.toggle("dr-compact", !!this.compactPages?.has(`${side}:${paragraph.pageIndex}`) && !this.expanded.has(key));
+      node.classList.toggle("dr-compact", !!this.compactPages?.has(`${side}:${paragraph.pageIndex}`) && !this.isOpen(key));
       const head = el(doc, "div", "dr-rhead");
       const summary = el(doc, "div", "dr-rsummary", session.paragraphSummary(paragraph) || "…");
       summary.title = DeepRead.bilingual("单击展开译文 · 双击编辑", "Click to expand translations · double-click to edit");
       summary.addEventListener("click", () => {
         if (summary.isContentEditable) return;
-        if (this.expanded.has(key)) this.expanded.delete(key);
+        if (this.isOpen(key)) {
+          this.expanded.delete(key);
+          if (this.focusKey === key) this.focusKey = null;
+        }
         else this.expanded.add(key);
         this.schedule();
         this.cards.get(key).sig = null;
@@ -575,7 +659,9 @@
           li.title = DeepRead.t("card.importance");
           li.append(el(doc, "span", "", point.summary || ""));
           if (point.translation && this.overlay.options.translationPopup) {
-            li.append(el(doc, "div", "dr-rtr", point.translation));
+            const tr = el(doc, "div", "dr-rtr");
+            tr.append(DeepRead.Overlay.inlineMarkdown(doc, point.translation));
+            li.append(tr);
           }
           li.addEventListener("pointerenter", () => this.overlay._drawHover(paragraph, point.id));
           li.addEventListener("pointerleave", () => this.overlay._drawHover(paragraph));
@@ -593,12 +679,14 @@
       if (this.noteEditing === key) {
         node.append(this._noteEditor(note, (value) => {
           this.noteEditing = null;
+          this._clearDrafts(`note:${key}`);
           session.setParagraphNote(key, value);
           this._invalidate(key);
         }, () => {
           this.noteEditing = null;
+          this._clearDrafts(`note:${key}`);
           this._invalidate(key);
-        }));
+        }, `note:${key}`));
       }
       else if (note) {
         const block = el(doc, "div", "dr-note");
@@ -623,14 +711,25 @@
       node.onpointerleave = () => this.overlay._clearTransient();
     }
 
-    _noteEditor(value, onSave, onCancel) {
+    /** Bind a textarea to a draft slot so typed text survives re-rendering the card. */
+    _draft(field, id, initial) {
+      field.value = this.drafts.has(id) ? this.drafts.get(id) : (initial || "");
+      field.addEventListener("input", () => this.drafts.set(id, field.value));
+    }
+
+    _clearDrafts(prefix) {
+      for (const id of [...this.drafts.keys()]) if (id.startsWith(prefix)) this.drafts.delete(id);
+    }
+
+    _noteEditor(value, onSave, onCancel, draftID) {
       const doc = this.readerDoc;
       const wrap = el(doc, "div", "dr-note dr-note-editing");
       wrap.append(el(doc, "div", "dr-note-label", DeepRead.bilingual("我的理解", "My understanding")));
       const area = el(doc, "textarea");
       area.rows = 3;
       area.placeholder = DeepRead.bilingual("写下你对这段的理解、疑问或联想…（Ctrl+Enter 保存）", "Your understanding, questions or connections… (Ctrl+Enter to save)");
-      area.value = value || "";
+      if (draftID) this._draft(area, draftID, value);
+      else area.value = value || "";
       area.addEventListener("keydown", (e) => {
         e.stopPropagation();
         if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
@@ -678,18 +777,19 @@
         const q = el(doc, "textarea");
         q.rows = 2;
         q.placeholder = DeepRead.bilingual("问题", "Question");
-        q.value = card.question || "";
+        this._draft(q, `fc:${card.id}:q`, card.question);
         const a = el(doc, "textarea");
         a.rows = 3;
         a.placeholder = DeepRead.bilingual("答案（可留空，或点 AI 回答）", "Answer (optional, or ask AI)");
-        a.value = card.answer || "";
+        this._draft(a, `fc:${card.id}:a`, card.answer);
         const n = el(doc, "textarea");
         n.rows = 3;
         n.placeholder = DeepRead.bilingual("我的理解（始终展开显示）", "My understanding (always shown)");
-        n.value = card.note || "";
+        this._draft(n, `fc:${card.id}:n`, card.note);
         const buttons = el(doc, "div", "dr-fc-buttons");
         const save = this._button(buttons, DeepRead.bilingual("保存", "Save"), "", async () => {
           session.editingFlashcard = null;
+          this._clearDrafts(`fc:${card.id}:`);
           await session.saveFlashcard({ ...card, question: q.value.trim(), answer: a.value.trim(), note: n.value.trim() });
         });
         save.classList.add("dr-primary");
@@ -707,12 +807,14 @@
             a.value = DeepRead.util.formatError(error);
           }
           finally {
+            this.drafts.set(`fc:${card.id}:a`, a.value);
             button.disabled = false;
             this.schedule(true);
           }
         });
         this._button(buttons, DeepRead.bilingual("取消", "Cancel"), "", () => {
           session.editingFlashcard = null;
+          this._clearDrafts(`fc:${card.id}:`);
           if (!card.question && !card.answer && !card.note) session.deleteFlashcard(card.id);
           else session._emit("flashcards", { id: card.id });
         });

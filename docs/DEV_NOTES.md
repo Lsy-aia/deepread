@@ -202,80 +202,25 @@ await DeepRead.GrobidParser.testConnection(config)                        // →
 Config: `parser.grobidURL` (default `http://127.0.0.1:8070`). `POST {url}/api/processFulltextDocument` with
 `teiCoordinates` for head, p, s, figure, formula, title; page sizes from `<facsimile><surface>`.
 
-## v0.4: full-document translation through ReadFlow (step 2)
+v0.4–v0.5 (ReadFlow client, built-in full-document translation, translated-PDF export) were removed in v0.6; see git tag v0.5.0.
 
-ReadFlow (our RetainPDF-based app, repo `~/Documents/LeoProjetcs/Retainpdf/readflow-maint/ReadFlow`) exposes a local
-Rust API (desktop app: `http://127.0.0.1:41000`, header `X-API-Key: retain-pdf-desktop` — a constant in ReadFlow's
-open-source `frontend/desktop/main.js`; the same API can be deployed with Docker). API docs: `backend/api/API_SPEC.md`
-and `backend/api/docs/api-spec/*.md` (jobs-submission, jobs-query, artifacts, credentials, runtime-and-events).
-DeepRead submits a `book` workflow job (OCR/normalize → translate → render) and saves the rendered PDF as a Zotero
-attachment. The user chooses the output per run: `"dual"` (side-by-side original | translation, render_mode `dual`)
-or `"inplace"` (translation typeset in place, render_mode `auto`). Translation uses **DeepRead's LLM settings**
-(`DeepRead.prefs.llmConfig()`: baseURL/model/apiKey).
+## v0.6: reading interactions
 
-### DeepRead.ReadFlow — `services/readflow.js`
-```js
-DeepRead.ReadFlow.config()                     // { baseURL, apiKey, ocrProvider, defaultMode } from prefs readflow.*
-await DeepRead.ReadFlow.testConnection(cfg?)   // → { ok, message } (GET /health + an authenticated GET)
-await DeepRead.ReadFlow.translatePDF({ filePath, mode: "dual"|"inplace", sourceLang?, targetLang, onStatus, signal })
-//   → { pdfBytes: Uint8Array, jobId, fileName }  (upload → create job → poll → download PDF artifact)
-//   onStatus({ phase: "upload"|"queued"|"ocr"|"translate"|"render"|"download", percent, message })
-await DeepRead.ReadFlow.cancel(jobId)
-```
-Prefs: `readflow.baseURL` (default `http://127.0.0.1:41000`), `readflow.apiKey` (default `retain-pdf-desktop`),
-`readflow.ocrProvider` (default `"local"`), `readflow.defaultMode` (`"dual"`).
-
-## v0.5: built-in lightweight full-document translation (no ReadFlow needed)
-
-The default engine translates the paper inside the plugin: ReadFlow's translation essentials are ported to JS
-(prompts, placeholder protection, page batching, validation/retry). Results are cached per attachment+language+model.
-The reader shows them as a persistent in-place "译文视图" (white box over each block with fitted text), and the user
-can export a translated PDF (side-by-side or in-place) built with pdf-lib + fontkit and a CJK font found on the system.
-ReadFlow (v0.4 client) stays as an optional engine: prefs `readflow.enabled` (default false), `readflow.autoStart`,
-`readflow.appPath`. Engine choice: pref `translate.engine` = `"builtin"` (default) | `"readflow"`.
-
-Input everywhere: a MinerU-style **content list** (see v0.3 contract; bbox per-mille, top-left origin, `page_idx`),
-from the session's parse (`DeepRead.Parser.parsePDF`, any provider). Block ids = the content-list `id`.
-
-### DeepRead.Translator — `services/translator.js` (port of ReadFlow's translate core; MIT RetainPDF + ReadFlow)
-```js
-DeepRead.Translator.buildUnits(contentList)  // → [{ id, page_idx, kind: "text"|"title"|"caption", text }] —
-//   skip equations, table bodies, images without captions, empty/very short noise, and everything after a
-//   "References"/"Bibliography"/"参考文献" heading (references stay untranslated); captions use image/table_caption.
-DeepRead.Translator.protect(text)            // → { text, tokens } placeholder-protect inline math ($…$, \(…\), LaTeX
-//   commands), citations ([12], [3, 5–7]), URLs/emails, code/paths/version strings — token format as ReadFlow's
-DeepRead.Translator.restore(text, tokens)    // → text (throws/flags when placeholders are missing or reordered)
-await DeepRead.Translator.translateUnits(units, { targetLang, onProgress, signal, concurrency, glossary })
-//   → { translations: Map(id → text), failures: [{ id, reason }] } — failed units are still in the Map with
-//   their original text; per page batches (≤ ~3500 source chars per request), JSON item protocol
-//   {"translations":[{"item_id","translated_text","decision"}]}, ReadFlow system/task prompts with
-//   {target_language_name}; validation: every item present, placeholders preserved, English residue for CJK
-//   targets; failed items retried individually (2 tries) then kept as original text with a flag.
-//   onProgress({ done, total, message }) ; uses DeepRead.LLM.complete with responseFormat json_object.
-```
-
-### DeepRead.PdfExport — `services/pdfExport.js` (pdf-lib + @pdf-lib/fontkit, vendored in content/lib)
-```js
-await DeepRead.PdfExport.findCJKFont()            // → { path, name } | null  (pref translate.fontPath first, then OS paths;
-//   CFF-outline fonts (Noto CJK, OTTO) are skipped: fontkit cannot subset them; TTC faces are extracted to a
-//   standalone sfnt; Droid Sans Fallback is embedded unsubset because fontkit garbles its subset)
-await DeepRead.PdfExport.build({ pdfBytes, contentList, translations /* Map or {id: text} */, mode: "dual"|"inplace",
-                                fontPath, onProgress })  // → Uint8Array
-//   in-place: each original page + white boxes over translated blocks + fitted translated text;
-//   dual: pages twice as wide, original on the left, translated copy on the right.
-```
-
-Gotcha: `IOUtils.read` returns a Uint8Array from another realm, and pdf-lib checks `instanceof Uint8Array`;
-`build()` copies inputs with `new Uint8Array(bytes)` first.
-
-### Session / UI (v0.5)
-- `session.translateFull()` — parse-only if needed (`ensureContentList`, no 精读 LLM pass; stored in `papers`), then
-  `Translator.translateUnits`, cache via `Store.saveTranslation(key, lang, "<baseURL>|<model>", data)`, view on.
-- `session.setTranslationView(on)` → `overlay.setTranslationView({ contentList, translations })` (`.dr-tbox` in the
-  `dr-tview` page sublayer). `session.exportTranslatedPDF(mode)` → `PdfExport.build` → `_saveTranslation` (same
-  attachment titles as ReadFlow; an older same-mode attachment is erased and its tab closed).
-- `session.translateDocument(mode)` (ReadFlow) first calls `ReadFlowLauncher.ensureRunning()`; disabled → configError.
-- Shared job state `session.translation = { status, engine: builtin|export|readflow, mode, percent, message }`.
-- Toolbar 整篇翻译 menu: 内置 section (翻译全文 | 显示译文 ✓ / 导出 PDF ×2 / 重新翻译), ReadFlow section only when
-  enabled (first when `translate.engine` = readflow), "open existing" items, settings.
-- e2e: `test/e2e/builtin-translate.js` (fake LLM answers prompts containing `待翻译 items（JSON）：`).
+- **Hover → in-place translation.** `overlay._setHover(p)` draws the outline at once and, after
+  `TRANSLATION_DELAY` (160 ms) on the same paragraph, sets `overlay.trPara = p` and paints the paragraph's point
+  translations (`_paragraphTranslation`) over its bbox (`.dr-translation`, transient sublayer). Layout comes from
+  the paragraph's own line rects (`_lineMetrics`: rects on one line merged; font size = median line-box height,
+  line height = median line pitch, first-line indent), shrunk together only when the text overflows. Text goes
+  through `DeepRead.Overlay.inlineMarkdown(doc, text)` (marked + KaTeX, sanitized), so `$…$` renders; KaTeX CSS is
+  injected into the PDF and reader documents. Titles (`paragraphType === "title"`) are bold, left-aligned.
+  Original instead of translation when: Alt is held (`altDown`), pref `view.translationPopup` is off, the
+  paragraph is an equation, or it was pressed / drag-selected (`_suppressPara`, cleared when the pointer leaves it).
+- **Click → open the card.** Capture-phase `pointerdown`/`pointerup` on the PDF window; a press that moved
+  < `CLICK_SLOP` px, without modifiers, not on a link, calls `overlay.openParagraph(p | null)`:
+  rail active → `rail.openParagraph(p)` (sets `rail.focusKey`; `rail.isOpen(key)` = expanded or focused; the card
+  gets `.dr-open`, is never compact, is stacked anchored at its paragraph — cards above stack upwards — and the
+  PDF scrolls so the card is fully visible: `_revealFocus`). Rail off → the floating card is shown and pinned
+  (`overlay.cardPinned`) until a blank click or scroll. A click on blank page area closes.
+- Synthetic events don't reach these privileged listeners; `test/e2e/interact.js` calls the handlers directly.
+- Split rails: a page uses the left rail only if it has narrow body-text blocks on both halves
+  (`rail._isTwoColumn`), so headings on one-column pages stay on the right.

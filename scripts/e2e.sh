@@ -54,8 +54,6 @@ user_pref("extensions.zotero.deepread.parser.mineruBaseURL", "http://127.0.0.1:1
 user_pref("extensions.zotero.deepread.parser.mineruToken", "test-token");
 user_pref("extensions.zotero.deepread.language", "${E2E_LANG:-zh}");
 user_pref("extensions.zotero.deepread.debug", ${E2E_DEBUG:-false});
-user_pref("extensions.zotero.deepread.readflow.baseURL", "${E2E_READFLOW_URL:-http://127.0.0.1:41999}");
-user_pref("extensions.zotero.deepread.readflow.apiKey", "retain-pdf-desktop");
 EOF
 # Force the add-on manager to rescan proxy files on startup.
 [ -f "$PROFILE/prefs.js" ] && sed -i '/extensions.lastAppBuildId/d;/extensions.lastAppVersion/d' "$PROFILE/prefs.js"
@@ -67,9 +65,6 @@ if ! curl -s -o /dev/null "http://127.0.0.1:18765/docs"; then
 fi
 if ! curl -s -o /dev/null "http://127.0.0.1:18766/v1/models"; then
   nohup node "$REPO/test/fake-openai.mjs" --port 18766 ${FAKE_OPENAI_ARGS:-} > "$BASE/fake-openai.log" 2>&1 &
-fi
-if [ -f "$REPO/test/fake-readflow.mjs" ] && ! curl -s -o /dev/null "http://127.0.0.1:41999/health"; then
-  nohup node "$REPO/test/fake-readflow.mjs" --port 41999 > "$BASE/fake-readflow.log" 2>&1 &
 fi
 sleep 0.5
 

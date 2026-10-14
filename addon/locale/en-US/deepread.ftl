@@ -78,40 +78,6 @@ deepread-pref-parser-selfhost-url = Service URL
 deepread-pref-parser-selfhost-token = Token (optional)
 deepread-pref-parser-selfhost-backend = Backend
 
-deepread-pref-translate-title = Full-document translation
-deepread-pref-translate-hint = Translate the whole paper inside Zotero: the translation can be shown in place in the reader ("translation view"), or exported as a side-by-side or in-place translated PDF. No other software is needed; translation uses the LLM settings above.
-deepread-pref-translate-engine = Engine
-deepread-pref-translate-engine-builtin =
-    .label = Built-in (lightweight, recommended)
-deepread-pref-translate-engine-readflow =
-    .label = ReadFlow (install and enable below)
-deepread-pref-translate-fontpath = Export font
-deepread-pref-translate-fontpath-input =
-    .placeholder = Empty = find a CJK system font automatically
-deepread-pref-translate-fontpath-hint = Font for the translated text in exported PDFs. Use a TrueType-outline .ttf or .ttc (e.g. Microsoft YaHei, WenQuanYi); CFF fonts such as Noto Sans CJK cannot be embedded.
-
-deepread-pref-readflow-title = ReadFlow engine (optional)
-deepread-pref-readflow-enabled =
-    .label = Enable the ReadFlow engine
-deepread-pref-readflow-autostart =
-    .label = Start ReadFlow automatically when needed
-deepread-pref-readflow-apppath = App path
-deepread-pref-readflow-apppath-input =
-    .placeholder = Empty = find automatically (e.g. /opt/ReadFlow/readflow)
-deepread-pref-readflow-hint = If ReadFlow is installed, you can use it here: ReadFlow handles recognition, translation and typesetting to produce a layout-preserving translated PDF. When not enabled, ReadFlow is never contacted.
-deepread-pref-readflow-baseurl = Service URL
-deepread-pref-readflow-apikey = API Key
-deepread-pref-readflow-apikey-hint = The ReadFlow desktop app uses retain-pdf-desktop by default; for a self-hosted service, enter the key you configured.
-deepread-pref-readflow-mode = Default output
-deepread-pref-readflow-mode-dual =
-    .label = Side by side (original | translation)
-deepread-pref-readflow-mode-inplace =
-    .label = In place (layout preserved)
-deepread-pref-readflow-mode-hint = You can also pick a different output for a single run from the toolbar menu.
-deepread-pref-readflow-ocr = Recognition
-deepread-pref-readflow-ocr-local =
-    .label = Local (text layer first)
-
 deepread-pref-reading-title = Reading
 deepread-pref-language = Output language
 deepread-pref-filter-author =
@@ -121,11 +87,11 @@ deepread-pref-view-highlights =
 deepread-pref-view-hovercards =
     .label = Show key-point cards on hover
 deepread-pref-view-translation =
-    .label = Show translation popup
+    .label = Show the translation in place on hover (hold Alt for the original)
 deepread-pref-chat-maxcontext = Chat max context characters
 
 deepread-pref-privacy-title = Privacy
-deepread-pref-privacy-note = API keys are stored in Zotero preferences on this computer. PDF content is sent only to the services you configure here. The built-in full-document translation calls the LLM above directly; only the optional ReadFlow engine registers the LLM key in the local ReadFlow key store (label deepread-llm) so ReadFlow can call the model.
+deepread-pref-privacy-note = API keys are stored in Zotero preferences on this computer. PDF content is sent only to the services you configure here.
 
 deepread-pane-flashcards-header =
     .label = Flashcards

@@ -2,7 +2,8 @@
  * In-reader presentation of deep-read results.
  *
  * - Passive layers inside each pdf.js page (pointer-events: none): key-point highlights,
- *   hover outlines and the Alt-hover in-place translation.
+ *   hover outlines and the in-place hover translation (laid out like the original paragraph;
+ *   hold Alt to see the original).
  * - Interactive paragraph cards live in the *outer* reader document (reader.html), because the
  *   reader registers capture-phase pointer handlers on the PDF window for text selection.
  *
@@ -22,23 +23,21 @@
   const HOVER_POINT_COLOR = "rgba(251, 191, 36, 0.32)";
   const SHOW_DELAY = 140;
   const HIDE_DELAY = 280;
+  const TRANSLATION_DELAY = 160; // dwell before the hovered paragraph turns into its translation
+  const CLICK_SLOP = 5; // px a press may move and still count as a click
 
   const PAGE_CSS = `
 .deepread-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
 .deepread-layer .dr-rect { position: absolute; border-radius: 2px; mix-blend-mode: multiply; }
 .deepread-layer .dr-outline { position: absolute; border-radius: 4px;
   box-shadow: 0 0 0 1.5px rgba(251, 191, 36, 0.85); background: rgba(251, 191, 36, 0.06); }
-.deepread-layer .dr-tbox { position: absolute; overflow: hidden; box-sizing: border-box; padding: 1px 2px;
-  background: #fffef8; color: #1f2328; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,0.05);
-  font-family: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", serif; line-height: 1.38;
-  text-align: justify; white-space: pre-wrap; word-break: break-word; }
-.deepread-layer .dr-tbox.dr-title { font-weight: 700; text-align: left; }
-:root[data-color-scheme="dark"] .deepread-layer .dr-tbox { background: #22252a; color: #e6e6e6; }
-.deepread-layer .dr-translation { position: absolute; overflow: hidden; box-sizing: border-box;
-  padding: 2px 3px; border-radius: 3px; background: #fffef8; color: #1f2328;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.08), 0 2px 10px rgba(0,0,0,0.12);
-  font-family: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", serif; line-height: 1.45;
-  text-align: justify; white-space: pre-wrap; word-break: break-word; }
+.deepread-layer .dr-translation { position: absolute; overflow: hidden; box-sizing: border-box; padding: 0;
+  background: #fffffe; color: #111; box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.55);
+  font-family: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
+  text-align: justify; text-align-last: start; overflow-wrap: anywhere; hyphens: none; }
+.deepread-layer .dr-translation.dr-title { font-weight: 700; text-align: start; }
+.deepread-layer .dr-translation p { margin: 0; }
+.deepread-layer .dr-translation .katex { font-size: 1em; }
 :root[data-color-scheme="dark"] .deepread-layer .dr-rect { mix-blend-mode: screen; }
 :root[data-color-scheme="dark"] .deepread-layer .dr-translation { background: #22252a; color: #e6e6e6; }
 `;
@@ -99,6 +98,25 @@
     return Number.isFinite(x1) ? [x1, y1, x2, y2] : null;
   }
 
+  /** One line/paragraph of LLM text (may hold **bold** and $math$) as an inline fragment for `doc`. */
+  function inlineMarkdown(doc, text) {
+    try {
+      let frag = DeepRead.Markdown.render(doc, text);
+      const only = frag.childNodes.length === 1 ? frag.firstChild : null;
+      if (only?.localName === "p") {
+        const inner = doc.createDocumentFragment();
+        inner.append(...only.childNodes);
+        frag = inner;
+      }
+      return frag;
+    }
+    catch (e) {
+      const frag = doc.createDocumentFragment();
+      frag.append(String(text || ""));
+      return frag;
+    }
+  }
+
   function inRect(r, x, y, pad = 1.5) {
     return x >= Math.min(r[0], r[2]) - pad && x <= Math.max(r[0], r[2]) + pad
       && y >= Math.min(r[1], r[3]) - pad && y <= Math.max(r[1], r[3]) + pad;
@@ -122,6 +140,9 @@
       };
       this.hoverPara = null;
       this.cardPara = null;
+      this.trPara = null; // hovered paragraph currently shown as its translation
+      this._suppressPara = null; // pressed/selected paragraph: show the original until the pointer leaves it
+      this._trContent = new WeakMap(); // paragraph → rendered translation (DocumentFragment)
       this.altDown = false;
       this._timers = {};
       this._cleanup = [];
@@ -142,13 +163,20 @@
       this.iframeEl = view._iframe;
 
       this._injectStyle(this.pdfDoc, "deepread-page-css", PAGE_CSS);
+      // Translations may contain inline math rendered with KaTeX.
+      DeepRead.util.injectStylesheet(this.pdfDoc, "chrome://deepread/content/lib/katex/katex.min.css", "deepread-katex-css");
+      DeepRead.util.injectStylesheet(this.readerDoc, "chrome://deepread/content/lib/katex/katex.min.css", "deepread-katex-css");
       this._injectStyle(this.readerDoc, "deepread-card-css", CARD_CSS);
 
       const onPointerMove = (event) => this._onPointerMove(event);
       const onPointerLeave = () => this._scheduleHide();
       const onKey = (event) => this._onKey(event);
       const onScroll = () => this._hideCard(true);
+      const onPointerDown = (event) => this._onPointerDown(event);
+      const onPointerUp = (event) => this._onPointerUp(event);
       this.pdfDoc.addEventListener("pointermove", onPointerMove, { passive: true });
+      this.pdfWin.addEventListener("pointerdown", onPointerDown, true);
+      this.pdfWin.addEventListener("pointerup", onPointerUp, true);
       this.pdfDoc.documentElement.addEventListener("pointerleave", onPointerLeave);
       this.pdfWin.addEventListener("keydown", onKey, true);
       this.pdfWin.addEventListener("keyup", onKey, true);
@@ -157,6 +185,8 @@
       container?.addEventListener("scroll", onScroll, { passive: true });
       this._cleanup.push(() => {
         this.pdfDoc.removeEventListener("pointermove", onPointerMove);
+        this.pdfWin.removeEventListener("pointerdown", onPointerDown, true);
+        this.pdfWin.removeEventListener("pointerup", onPointerUp, true);
         this.pdfDoc.documentElement?.removeEventListener("pointerleave", onPointerLeave);
         this.pdfWin.removeEventListener("keydown", onKey, true);
         this.pdfWin.removeEventListener("keyup", onKey, true);
@@ -203,56 +233,6 @@
       this.card?.remove();
       this.card = null;
       this.attached = false;
-    }
-
-    /**
-     * Persistent in-place translation of whole blocks ("译文视图").
-     * view = { contentList, translations: { [id]: text } } or null to show the original.
-     */
-    setTranslationView(view) {
-      this.tview = null;
-      if (view?.contentList && view.translations) {
-        const byPage = new Map();
-        for (const item of view.contentList) {
-          const text = view.translations[item.id];
-          if (!text || !Array.isArray(item.bbox)) continue;
-          if (!byPage.has(item.page_idx)) byPage.set(item.page_idx, []);
-          byPage.get(item.page_idx).push({ bbox: item.bbox, text, title: item.text_level === 1 });
-        }
-        this.tview = byPage;
-      }
-      this.renderAllPages();
-    }
-
-    /** PDF rect of a per-mille (top-left origin) bbox on a page. */
-    _permilleRect(pageIndex, bbox) {
-      const pageView = this.app?.pdfViewer?.getPageView(pageIndex);
-      const view = pageView?.pdfPage?.view ? Array.from(pageView.pdfPage.view) : null;
-      if (!view) return null;
-      const w = view[2] - view[0];
-      const h = view[3] - view[1];
-      return [view[0] + (bbox[0] / 1000) * w, view[3] - (bbox[3] / 1000) * h, view[0] + (bbox[2] / 1000) * w, view[3] - (bbox[1] / 1000) * h];
-    }
-
-    _renderTranslationView(ctx, pageIndex) {
-      ctx.tview.replaceChildren();
-      const blocks = this.tview?.get(pageIndex);
-      if (!blocks?.length) return;
-      const scale = Math.hypot(ctx.geom.t[0], ctx.geom.t[1]) * (ctx.geom.div.clientWidth / ctx.geom.w);
-      for (const block of blocks) {
-        const rect = this._permilleRect(pageIndex, block.bbox);
-        if (!rect) continue;
-        const box = this._addRect(ctx.tview, ctx.geom, [rect[0] - 1, rect[1] - 1, rect[2] + 1, rect[3] + 1], block.title ? "dr-tbox dr-title" : "dr-tbox");
-        box.textContent = block.text;
-        // Start near typical body size (~10 pt) and shrink until the text fits its block.
-        let size = Math.max(6, (block.title ? 13 : 10) * scale);
-        const height = box.clientHeight;
-        for (let i = 0; i < 16 && size > 5; i++) {
-          box.style.fontSize = `${size}px`;
-          if (box.scrollHeight <= height + 1) break;
-          size *= 0.9;
-        }
-      }
     }
 
     setData(hierarchicalData) {
@@ -354,13 +334,12 @@
       let layer = geom.div.querySelector(":scope > .deepread-layer");
       if (!layer) {
         layer = el(this.pdfDoc, "div", "deepread-layer");
-        layer.append(el(this.pdfDoc, "div", "dr-persistent"), el(this.pdfDoc, "div", "dr-tview"), el(this.pdfDoc, "div", "dr-transient"));
+        layer.append(el(this.pdfDoc, "div", "dr-persistent"), el(this.pdfDoc, "div", "dr-transient"));
         geom.div.append(layer);
       }
       return {
         layer, geom,
         persistent: layer.querySelector(":scope > .dr-persistent"),
-        tview: layer.querySelector(":scope > .dr-tview"),
         transient: layer.querySelector(":scope > .dr-transient"),
       };
     }
@@ -381,13 +360,12 @@
       const paragraphs = this.pages.get(pageIndex) || [];
       const geom = this._geometry(pageIndex);
       if (!geom) return;
-      if (!paragraphs.length && !this.tview?.get(pageIndex)?.length) {
+      if (!paragraphs.length) {
         geom.div.querySelector(":scope > .deepread-layer")?.remove();
         return;
       }
       const ctx = this._layer(pageIndex);
       if (!ctx) return;
-      this._renderTranslationView(ctx, pageIndex);
       ctx.persistent.replaceChildren();
       if (this.options.highlights) {
         for (const paragraph of paragraphs) {
@@ -418,21 +396,22 @@
       this._clearTransient();
       const ctx = this._layer(paragraph.pageIndex);
       if (!ctx) return;
-      if (this.altDown && this.options.translationPopup) {
-        this._drawTranslation(ctx, paragraph);
-        return;
-      }
       if (pointId) {
         const point = (paragraph.points || []).find((p) => p.id === pointId);
         for (const rect of point?.rects || []) {
           this._addRect(ctx.transient, ctx.geom, rect, "dr-rect", HOVER_POINT_COLOR);
         }
+        return;
       }
-      else {
-        const pad = 2;
-        const [x1, y1, x2, y2] = paragraph.bbox;
-        this._addRect(ctx.transient, ctx.geom, [x1 - pad, y1 - pad, x2 + pad, y2 + pad], "dr-outline");
-      }
+      if (paragraph === this.trPara && this._translationAllowed(paragraph) && this._drawTranslation(ctx, paragraph)) return;
+      const pad = 2;
+      const [x1, y1, x2, y2] = paragraph.bbox;
+      this._addRect(ctx.transient, ctx.geom, [x1 - pad, y1 - pad, x2 + pad, y2 + pad], "dr-outline");
+    }
+
+    _translationAllowed(paragraph) {
+      return this.options.translationPopup && !this.altDown && paragraph !== this._suppressPara
+        && paragraph.paragraphType !== "equation";
     }
 
     _paragraphTranslation(paragraph) {
@@ -440,26 +419,87 @@
       return parts.join("");
     }
 
+    /**
+     * Line metrics of a paragraph in page-div CSS px, from its line rects (sentence pieces that
+     * share a line are merged): font size, line pitch, first-line indent.
+     */
+    _lineMetrics(geom, paragraph) {
+      const k = (geom.div.clientWidth || geom.w) / geom.w;
+      const boxes = [];
+      for (const r of paragraph.rects || []) {
+        const [ax, ay] = apply(geom.t, r[0], r[1]);
+        const [bx, by] = apply(geom.t, r[2], r[3]);
+        const box = { x1: Math.min(ax, bx) * k, x2: Math.max(ax, bx) * k, y1: Math.min(ay, by) * k, y2: Math.max(ay, by) * k };
+        if (box.y2 - box.y1 > 1 && box.x2 - box.x1 > 1) boxes.push(box);
+      }
+      boxes.sort((a, b) => a.y1 - b.y1 || a.x1 - b.x1);
+      const lines = [];
+      for (const box of boxes) {
+        const cy = (box.y1 + box.y2) / 2;
+        const line = lines.find((l) => cy > l.y1 && cy < l.y2);
+        if (line) {
+          line.x1 = Math.min(line.x1, box.x1);
+          line.x2 = Math.max(line.x2, box.x2);
+        }
+        else lines.push({ ...box });
+      }
+      const median = (values, fallback) => {
+        const v = values.filter((x) => Number.isFinite(x) && x > 0).sort((a, b) => a - b);
+        return v.length ? v[Math.floor(v.length / 2)] : fallback;
+      };
+      const height = median(lines.map((l) => l.y2 - l.y1), 10 * k);
+      lines.sort((a, b) => a.y1 - b.y1);
+      const pitches = [];
+      for (let i = 1; i < lines.length; i++) {
+        const d = (lines[i].y1 + lines[i].y2) / 2 - (lines[i - 1].y1 + lines[i - 1].y2) / 2;
+        if (d > height * 0.6 && d < height * 3) pitches.push(d);
+      }
+      // A Latin line box (ascent + descent) is ~0.9 em; CJK glyphs fill their em, so an em of
+      // about the line-box height matches the original's visual size.
+      const fontSize = height;
+      const lineHeight = median(pitches, height * 1.2);
+      const left = Math.min(...lines.map((l) => l.x1));
+      const indent = lines.length > 1 && lines[0].x1 - left > fontSize * 0.8 ? lines[0].x1 - left : 0;
+      return { fontSize, lineHeight, indent, lines: lines.length };
+    }
+
+    _translationContent(paragraph, text) {
+      let frag = this._trContent.get(paragraph);
+      if (!frag) {
+        frag = inlineMarkdown(this.pdfDoc, text);
+        this._trContent.set(paragraph, frag);
+      }
+      return frag.cloneNode(true);
+    }
+
+    /** Paints the translation over the paragraph with the original's font size, line pitch and indent. */
     _drawTranslation(ctx, paragraph) {
       const text = this._paragraphTranslation(paragraph);
-      if (!text) return;
-      const box = this._addRect(ctx.transient, ctx.geom, paragraph.bbox, "dr-translation");
-      box.textContent = text;
-      // Start from the original line height (so it reads like the paper), then shrink to fit.
+      if (!text) return false;
+      const metrics = this._lineMetrics(ctx.geom, paragraph);
+      const [x1, y1, x2, y2] = paragraph.bbox;
+      const pad = 1; // PDF units: cover glyph edges of the original
+      const title = paragraph.paragraphType === "title";
+      const box = this._addRect(ctx.transient, ctx.geom, [x1 - pad, y1 - pad, x2 + pad, y2 + pad], title ? "dr-translation dr-title" : "dr-translation");
+      box.append(this._translationContent(paragraph, text));
+      box.style.textIndent = `${metrics.indent}px`;
       const height = box.clientHeight;
-      const scale = Math.hypot(ctx.geom.t[0], ctx.geom.t[1]) * (ctx.geom.div.clientWidth / ctx.geom.w);
-      const lineHeights = paragraph.rects.map((r) => Math.abs(r[3] - r[1])).filter((v) => v > 2).sort((a, b) => a - b);
-      const lineHeight = lineHeights.length ? lineHeights[Math.floor(lineHeights.length / 2)] : 10;
-      let size = Math.max(8, Math.min(28, lineHeight * scale * 1.0));
-      for (let i = 0; i < 14; i++) {
+      // Keep the original size when it fits; otherwise shrink size and pitch together.
+      let size = metrics.fontSize;
+      let lineHeight = metrics.lineHeight;
+      for (let i = 0; i < 24; i++) {
         box.style.fontSize = `${size}px`;
-        if (box.scrollHeight <= height + 1 || size <= 7) break;
-        size *= 0.9;
+        box.style.lineHeight = `${lineHeight}px`;
+        if (box.scrollHeight <= height + 1 || size <= metrics.fontSize * 0.55) break;
+        size *= 0.95;
+        lineHeight *= 0.95;
       }
       if (box.scrollHeight > height + 1) {
         box.style.height = "auto";
         box.style.overflow = "visible";
       }
+      box.dataset.fontSize = size.toFixed(2);
+      return true;
     }
 
     /* ---------- hover handling ---------- */
@@ -468,10 +508,7 @@
       const alt = event.type === "blur" ? false : !!event.altKey;
       if (alt === this.altDown) return;
       this.altDown = alt;
-      if (this.hoverPara) {
-        this._drawHover(this.hoverPara);
-        if (alt) this._hideCard(false);
-      }
+      if (this.hoverPara) this._drawHover(this.hoverPara);
     }
 
     _hitTest(event) {
@@ -494,12 +531,13 @@
     _onPointerMove(event) {
       if (!this.pages.size) return;
       this.altDown = !!event.altKey;
-      const active = this.options.hoverCards || this.railActive || (this.altDown && this.options.translationPopup);
+      const active = this.options.hoverCards || this.railActive || this.options.translationPopup;
       if (!active || event.buttons) {
         if (this.hoverPara) this._setHover(null);
         return;
       }
       const paragraph = this._hitTest(event);
+      if (paragraph !== this._suppressPara) this._suppressPara = null;
       if (paragraph !== this.hoverPara) {
         this._setHover(paragraph);
       }
@@ -507,7 +545,9 @@
 
     _setHover(paragraph) {
       this.hoverPara = paragraph;
+      this.trPara = null;
       clearTimeout(this._timers.show);
+      clearTimeout(this._timers.translation);
       if (!paragraph) {
         this._clearTransient();
         this.session.rail?.linkParagraph(null);
@@ -517,7 +557,14 @@
       clearTimeout(this._timers.hide);
       this._drawHover(paragraph);
       this.session.rail?.linkParagraph(paragraph);
-      if (this.altDown || !this.options.hoverCards || this.railActive) return;
+      if (this._translationAllowed(paragraph) && this._paragraphTranslation(paragraph)) {
+        this._timers.translation = setTimeout(() => {
+          if (this.hoverPara !== paragraph) return;
+          this.trPara = paragraph;
+          this._drawHover(paragraph);
+        }, TRANSLATION_DELAY);
+      }
+      if (!this.options.hoverCards || this.railActive || this.cardPinned) return;
       this._timers.show = setTimeout(() => this._showCard(paragraph), this.card && !this.card.hidden ? 40 : SHOW_DELAY);
     }
 
@@ -526,9 +573,61 @@
       this._timers.hide = setTimeout(() => {
         if (this._cardHovered) return;
         this.hoverPara = null;
+        this.trPara = null;
         this._clearTransient();
-        this._hideCard(false);
+        if (!this.cardPinned) this._hideCard(false);
       }, HIDE_DELAY);
+    }
+
+    /* ---------- click: open the paragraph's card ---------- */
+
+    _onPointerDown(event) {
+      if (!this.pages.size || event.button !== 0) return;
+      this._press = { x: event.clientX, y: event.clientY, t: Date.now(), modified: event.shiftKey || event.ctrlKey || event.metaKey || event.altKey };
+      // Pressing means working with the original text (select, annotate): show it.
+      const paragraph = this._hitTest(event);
+      if (paragraph) {
+        this._suppressPara = paragraph;
+        if (this.trPara === paragraph) {
+          this.trPara = null;
+          this._drawHover(paragraph);
+        }
+      }
+    }
+
+    _onPointerUp(event) {
+      const press = this._press;
+      this._press = null;
+      if (!press || event.button !== 0 || !this.pages.size) return;
+      const paragraph = this._hitTest(event);
+      const moved = Math.hypot(event.clientX - press.x, event.clientY - press.y);
+      if (moved > CLICK_SLOP) {
+        // Text selection: keep the original visible under the selection.
+        this._suppressPara = paragraph;
+        return;
+      }
+      if (press.modified || Date.now() - press.t > 800) return;
+      if (event.target?.closest?.(".annotationLayer a, a[href]")) return;
+      this.openParagraph(paragraph);
+    }
+
+    /** Open (or with null: close) the paragraph's card — in the margin rail, or as a pinned hover card. */
+    openParagraph(paragraph) {
+      if (this.railActive && this.session.rail) {
+        this.session.rail.openParagraph(paragraph);
+        return;
+      }
+      if (!paragraph) {
+        if (this.cardPinned) {
+          this.cardPinned = false;
+          this._hideCard(false);
+        }
+        return;
+      }
+      this.cardPinned = false;
+      this.hoverPara = paragraph;
+      this._showCard(paragraph);
+      this.cardPinned = true;
     }
 
     /* ---------- card ---------- */
@@ -553,7 +652,10 @@
 
     _hideCard(immediate) {
       clearTimeout(this._timers.show);
-      if (immediate) this._cardHovered = false;
+      if (immediate) {
+        this._cardHovered = false;
+        this.cardPinned = false;
+      }
       if (this.card) this.card.hidden = true;
       this.cardPara = null;
     }
@@ -604,7 +706,9 @@
         li.title = DeepRead.t("card.importance");
         li.append(el(doc, "div", "dr-point-summary", point.summary || ""));
         if (showTranslation && point.translation) {
-          li.append(el(doc, "div", "dr-point-translation", point.translation));
+          const tr = el(doc, "div", "dr-point-translation");
+          tr.append(inlineMarkdown(doc, point.translation));
+          li.append(tr);
         }
         li.addEventListener("pointerenter", () => this._drawHover(paragraph, point.id));
         li.addEventListener("pointerleave", () => this._drawHover(paragraph));
@@ -623,7 +727,8 @@
         block.append(el(doc, "div", "dr-hnote-label", DeepRead.bilingual("我的理解", "My understanding")), el(doc, "div", "", note));
         card.append(block);
       }
-      card.append(el(doc, "div", "dr-foot", `p. ${paragraph.pageIndex + 1} · Alt: ${DeepRead.t("card.translation")}`));
+      const foot = showTranslation && this._paragraphTranslation(paragraph) ? ` · ${DeepRead.bilingual("按住 Alt 看原文", "hold Alt for the original")}` : "";
+      card.append(el(doc, "div", "dr-foot", `p. ${paragraph.pageIndex + 1}${foot}`));
 
       card.hidden = false;
       this._positionCard(card, paragraph);
@@ -670,4 +775,5 @@
   };
 
   DeepRead.Overlay.unionRect = unionRect;
+  DeepRead.Overlay.inlineMarkdown = inlineMarkdown;
 })();
