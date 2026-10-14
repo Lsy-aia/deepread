@@ -131,6 +131,40 @@
     });
   }
 
+  function wireSlider(id, valueId, prefKey, min, max, unit) {
+    var input = $(id);
+    var label = $(valueId);
+    if (!input) return;
+    var clamp = function (v) {
+      v = Math.round(Number(v));
+      if (!isFinite(v)) v = min;
+      return Math.min(max, Math.max(min, v));
+    };
+    var show = function (v) {
+      if (label) {
+        label.value = v + " " + unit;
+        label.setAttribute("value", v + " " + unit);
+      }
+    };
+    var current = min;
+    try {
+      current = clamp(Zotero.Prefs.get(PREFIX + prefKey, true));
+    } catch (e) {}
+    input.value = String(current);
+    show(current);
+    var onInput = function () {
+      var v = clamp(input.value);
+      show(v);
+      try {
+        Zotero.Prefs.set(PREFIX + prefKey, v, true);
+      } catch (e) {
+        Zotero.debug("[DeepRead] pref set failed: " + e);
+      }
+    };
+    input.addEventListener("input", onInput);
+    input.addEventListener("change", onInput);
+  }
+
   function init() {
     var root = $("deepread-pref-root");
     if (!root || root.dataset.deepreadInit === "1") return;
@@ -159,6 +193,8 @@
     setTimeout(updateProviderVisibility, 300);
 
     wireUpdate();
+    wireSlider("deepread-pref-card-width", "deepread-pref-card-width-value", "view.railWidth", 200, 520, "px");
+    wireSlider("deepread-pref-card-fontsize", "deepread-pref-card-fontsize-value", "view.cardFontSize", 10, 18, "px");
 
     wireTest("deepread-pref-llm-test", "deepread-pref-llm-status", function () {
       return Zotero.DeepRead && Zotero.DeepRead.LLM;

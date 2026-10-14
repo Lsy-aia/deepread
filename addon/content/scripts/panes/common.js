@@ -267,7 +267,7 @@
       return frag;
     },
 
-    /** Turn "(p. 3)" / "p. 3" references into clickable links. */
+    /** Turn "(p. 3)" / "p. 3" / "p. 3 ¶2" references into clickable links: onPage(page, paragraph?) (1-based). */
     linkPageRefs(container, onPage) {
       const doc = container.ownerDocument;
       const walker = doc.createTreeWalker(container, 4 /* SHOW_TEXT */);
@@ -277,7 +277,7 @@
         if (node.parentElement?.closest("a, code, pre, .katex")) continue;
         if (/\bp(?:p|age)?\.?\s*\d+/i.test(node.nodeValue)) nodes.push(node);
       }
-      const re = /\b(p(?:p|age)?\.?\s*)(\d+)/gi;
+      const re = /\b(p(?:p|age)?\.?\s*)(\d+)(?:\s*¶\s*(\d+))?/gi;
       for (const node of nodes) {
         const text = node.nodeValue;
         const frag = doc.createDocumentFragment();
@@ -286,9 +286,10 @@
           frag.append(text.slice(last, match.index));
           const link = DeepRead.util.h(doc, "a", { href: "#", class: "dr-page-ref" }, match[0]);
           const page = Number(match[2]);
+          const paragraph = match[3] ? Number(match[3]) : undefined;
           link.addEventListener("click", (e) => {
             e.preventDefault();
-            onPage(page);
+            onPage(page, paragraph);
           });
           frag.append(link);
           last = match.index + match[0].length;

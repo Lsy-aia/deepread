@@ -22,7 +22,11 @@
 .deepread-rail { position: relative; flex: 0 0 var(--dr-rail-width, 300px); overflow: hidden;
   border-inline-start: 1px solid var(--color-panedivider, rgba(0,0,0,0.12));
   background: var(--material-sidepane, #f6f7f8); color: var(--fill-primary, #1f2328);
-  font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+  font: var(--dr-card-font, 12px)/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+.deepread-rail .dr-resize { position: absolute; top: 0; bottom: 0; width: 6px; z-index: 8; cursor: col-resize; }
+.deepread-rail.dr-right .dr-resize { left: 0; }
+.deepread-rail.dr-left .dr-resize { right: 0; }
+.deepread-rail .dr-resize:hover, .deepread-rail .dr-resize.dr-dragging { background: rgba(59,130,246,0.35); }
 .deepread-rail.dr-left { border-inline-start: none; border-inline-end: 1px solid var(--color-panedivider, rgba(0,0,0,0.12)); }
 .deepread-rail.dr-left .dr-rcard { left: 8px; right: 12px; }
 .deepread-rail svg.dr-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -36,7 +40,7 @@
 .deepread-rail .dr-ractions { display: none; gap: 1px; flex-shrink: 0; }
 .deepread-rail .dr-rcard:hover .dr-ractions { display: flex; }
 .deepread-rail .dr-ractions button { border: none; background: transparent; color: var(--fill-secondary, #57606a); cursor: pointer;
-  font-size: 11px; padding: 0 4px; border-radius: 4px; line-height: 18px; }
+  font-size: 0.92em; padding: 0 4px; border-radius: 4px; line-height: 1.5; }
 .deepread-rail .dr-ractions button:hover { background: rgba(0,0,0,0.07); color: inherit; }
 .deepread-rail ul { margin: 3px 0 0; padding: 0; list-style: none; }
 .deepread-rail li { position: relative; padding: 1px 4px 1px 11px; border-radius: 4px; cursor: pointer; color: var(--fill-secondary, #424a53); }
@@ -46,10 +50,21 @@
 .deepread-rail li[data-level="2"] { color: #1d4ed8; }
 .deepread-rail li[data-level="3"] { color: #b91c1c; }
 .deepread-rail li:hover { background: rgba(251,191,36,0.16); }
-.deepread-rail .dr-rtr { display: none; color: var(--fill-primary, #1f2328); margin-top: 1px; }
-.deepread-rail li:hover .dr-rtr, .deepread-rail .dr-rcard.dr-expanded .dr-rtr { display: block; }
+.deepread-rail .dr-explain { margin-top: 3px; color: var(--fill-primary, #1f2328); overflow-wrap: anywhere; }
+.deepread-rail .dr-explain p { margin: 0.25em 0; }
+.deepread-rail .dr-explain ul, .deepread-rail .dr-explain ol { margin: 0.2em 0; padding-inline-start: 1.3em; list-style: revert; }
+.deepread-rail .dr-explain li { padding: 0; cursor: auto; color: inherit; }
+.deepread-rail .dr-explain li::before { display: none; }
+.deepread-rail .dr-explain-pending, .deepread-rail .dr-explain-missing { color: var(--fill-secondary, #6b7280); font-style: italic; }
+.deepread-rail .dr-explain-missing a { cursor: pointer; color: #2563eb; font-style: normal; }
+.deepread-rail .dr-points { font-size: 0.95em; }
+.deepread-rail .dr-trwrap { margin-top: 4px; }
+.deepread-rail .dr-trtoggle { display: inline-block; font-size: 0.9em; color: var(--fill-secondary, #6b7280); cursor: pointer; user-select: none; }
+.deepread-rail .dr-trtoggle:hover { color: var(--fill-primary, #1f2328); }
+.deepread-rail .dr-trbody { margin-top: 2px; padding: 3px 7px; border-inline-start: 3px solid #93c5fd; border-radius: 4px;
+  background: rgba(59,130,246,0.06); font-family: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", serif; }
 .deepread-rail .dr-rcard.dr-flash { background: #fffbea; border-color: rgba(234,179,8,0.45); cursor: pointer; }
-.deepread-rail .dr-fc-label { font-size: 10.5px; font-weight: 700; color: #a16207; letter-spacing: .02em; }
+.deepread-rail .dr-fc-label { font-size: 0.875em; font-weight: 700; color: #a16207; letter-spacing: .02em; }
 .deepread-rail .dr-fc-q { font-weight: 600; }
 .deepread-rail .dr-fc-a { margin-top: 3px; padding-top: 3px; border-top: 1px dashed rgba(161,98,7,0.35); }
 .deepread-rail .dr-fc-a p { margin: 0.2em 0; }
@@ -58,18 +73,20 @@
 .deepread-rail .dr-rcard.dr-open { z-index: 6; box-shadow: 0 0 0 2px rgba(251,191,36,0.95), 0 6px 18px rgba(0,0,0,0.14); }
 .deepread-rail .dr-rcard.dr-compact { padding-block: 3px; }
 .deepread-rail .dr-rcard.dr-compact .dr-rsummary { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.deepread-rail .dr-rcard.dr-compact .dr-points { display: none; }
+.deepread-rail .dr-rcard.dr-compact .dr-points, .deepread-rail .dr-rcard.dr-compact .dr-explain,
+.deepread-rail .dr-rcard.dr-compact .dr-trwrap { display: none; }
 .deepread-rail .dr-rcard.dr-compact:hover .dr-rsummary { white-space: normal; font-weight: 600; }
-.deepread-rail .dr-rcard.dr-compact:hover .dr-points { display: block; }
+.deepread-rail .dr-rcard.dr-compact:hover .dr-points, .deepread-rail .dr-rcard.dr-compact:hover .dr-explain,
+.deepread-rail .dr-rcard.dr-compact:hover .dr-trwrap { display: block; }
 .deepread-rail .dr-note { margin-top: 5px; padding: 4px 7px; border-radius: 6px; border-inline-start: 3px solid #10b981;
   background: rgba(16,185,129,0.08); color: var(--fill-primary, #1f2328); cursor: text; }
-.deepread-rail .dr-note-label { font-size: 10.5px; font-weight: 700; color: #047857; }
+.deepread-rail .dr-note-label { font-size: 0.875em; font-weight: 700; color: #047857; }
 .deepread-rail .dr-note-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .deepread-rail .dr-note-editing textarea { margin-top: 2px; }
 .deepread-rail .dr-attached { margin-top: 5px; display: flex; flex-direction: column; gap: 4px; }
 .deepread-rail .dr-fc-attached { padding: 4px 7px; border-radius: 6px; background: #fffbea; border: 1px solid rgba(234,179,8,0.4); cursor: pointer; }
 .deepread-rail .dr-fc-attached:hover .dr-ractions { display: flex; }
-.deepread-rail .dr-fc-reveal { font-size: 11px; }
+.deepread-rail .dr-fc-reveal { font-size: 0.92em; }
 .deepread-rail .dr-fc .dr-note { cursor: default; }
 :root[data-color-scheme="dark"] .deepread-rail .dr-note { background: rgba(16,185,129,0.14); color: #e6e6e6; }
 :root[data-color-scheme="dark"] .deepread-rail .dr-note-label { color: #34d399; }
@@ -77,12 +94,14 @@
 .deepread-rail textarea { width: 100%; box-sizing: border-box; font: inherit; resize: vertical; margin: 2px 0;
   border: 1px solid rgba(0,0,0,0.15); border-radius: 5px; padding: 3px 5px; background: var(--material-background, #fff); color: inherit; }
 .deepread-rail .dr-fc-buttons { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 3px; }
-.deepread-rail .dr-fc-buttons button { font: inherit; font-size: 11px; padding: 1px 7px; border-radius: 4px; cursor: pointer;
+.deepread-rail .dr-fc-buttons button { font: inherit; font-size: 0.92em; padding: 1px 7px; border-radius: 4px; cursor: pointer;
   border: 1px solid rgba(0,0,0,0.15); background: transparent; color: inherit; }
 .deepread-rail .dr-fc-buttons button.dr-primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
 :root[data-color-scheme="dark"] .deepread-rail { background: #1f2124; color: #e6e6e6; }
 :root[data-color-scheme="dark"] .deepread-rail .dr-rcard { background: #2a2d32; border-color: rgba(255,255,255,0.1); }
 :root[data-color-scheme="dark"] .deepread-rail li { color: #c5c9cf; }
+:root[data-color-scheme="dark"] .deepread-rail .dr-trbody { background: rgba(59,130,246,0.12); }
+:root[data-color-scheme="dark"] .deepread-rail .dr-explain { color: #e6e6e6; }
 :root[data-color-scheme="dark"] .deepread-rail .dr-rcard.dr-flash { background: #3a3320; border-color: rgba(234,179,8,0.35); }
 `;
 
@@ -100,6 +119,7 @@
       this.expanded = new Set();
       this.focusKey = null; // card opened by clicking its paragraph in the PDF
       this.drafts = new Map(); // unsaved editor text, kept when a card re-renders (e.g. it is closed)
+      this.trToggled = new Set(); // cards whose translation fold differs from the default (pref cards.translationOpen)
       this.attached = false;
       this._cleanup = [];
       this._raf = null;
@@ -166,7 +186,17 @@
       if (key) {
         this._revealPending = true;
         this._invalidate(key);
+        // An opened card should have its explanation: generate it now if it is missing.
+        if (DeepRead.prefs.get("cards.autoExplain") !== false && paragraph && !this.session.explanation(key)
+            && DeepRead.Explainer?.eligible(paragraph) && DeepRead.LLM.isConfigured()) {
+          this.session.explainParagraph(key).catch((e) => DeepRead.log("explain on open failed", String(e)));
+        }
       }
+    }
+
+    /** "p. 3 ¶2" — how cards are referred to in the chat. */
+    static blockLabel(paragraph) {
+      return `p. ${paragraph.pageIndex + 1} ¶${paragraph.paragraphIndex + 1}`;
     }
 
     /** After layout: scroll the PDF so the opened card is fully visible (its paragraph stays on screen). */
@@ -271,24 +301,31 @@
         (doc.head || doc.documentElement).append(link);
         this._cleanup.push(() => link.remove());
       }
-      const width = Math.max(200, Math.min(520, DeepRead.prefs.number("view.railWidth", 280)));
-      const makeRail = (cls) => {
+      const makeRail = (cls, side) => {
         const rail = el(doc, "div", cls);
-        rail.style.setProperty("--dr-rail-width", `${width}px`);
         const svg = doc.createElementNS(SVG_NS, "svg");
         svg.setAttribute("class", "dr-links");
-        rail.append(svg);
+        rail.append(svg, this._resizeHandle(side));
         rail._svg = svg;
         return rail;
       };
-      this.root = makeRail("deepread-rail dr-right");
+      this.root = makeRail("deepread-rail dr-right", "right");
       this.svg = this.root._svg;
       this.container.classList.add("deepread-has-rail");
       this.container.append(this.root);
       if (withLeft) {
-        this.leftRoot = makeRail("deepread-rail dr-left");
+        this.leftRoot = makeRail("deepread-rail dr-left", "left");
         this.container.prepend(this.leftRoot);
       }
+      this._applySizing();
+      // Card width / font size / translation fold follow the settings live.
+      const observers = ["view.railWidth", "view.cardFontSize", "cards.translationOpen"].map((name) =>
+        Zotero.Prefs.registerObserver(`deepread.${name}`, () => {
+          this._applySizing();
+          for (const card of this.cards.values()) card.sig = null;
+          this.schedule(true);
+        }));
+      this._cleanup.push(() => observers.forEach((id) => Zotero.Prefs.unregisterObserver(id)));
       this.overlay.setRailActive?.(true);
 
       const schedule = () => this.schedule();
@@ -315,6 +352,61 @@
       if (this.leftRoot) ro.observe(this.leftRoot);
       this._cleanup.push(() => ro.disconnect());
       this._cleanup.push(() => this.readerDoc.getElementById("deepread-rail-css")?.remove());
+    }
+
+    static clampWidth(value) {
+      return Math.max(200, Math.min(520, Math.round(Number(value) || 280)));
+    }
+
+    static clampFont(value) {
+      return Math.max(10, Math.min(18, Math.round(Number(value) || 12)));
+    }
+
+    _applySizing(width = DeepRead.Rail.clampWidth(DeepRead.prefs.number("view.railWidth", 280))) {
+      const font = DeepRead.Rail.clampFont(DeepRead.prefs.number("view.cardFontSize", 12));
+      for (const rail of [this.root, this.leftRoot]) {
+        rail?.style.setProperty("--dr-rail-width", `${width}px`);
+        rail?.style.setProperty("--dr-card-font", `${font}px`);
+      }
+    }
+
+    /** Drag the rail's edge facing the PDF to resize the cards (saved as view.railWidth). */
+    _resizeHandle(side) {
+      const handle = el(this.readerDoc, "div", "dr-resize");
+      handle.title = DeepRead.bilingual("拖动调整卡片宽度", "Drag to resize the cards");
+      handle.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startWidth = handle.parentNode.clientWidth;
+        const dir = side === "left" ? 1 : -1;
+        let width = startWidth;
+        handle.classList.add("dr-dragging");
+        handle.setPointerCapture(e.pointerId);
+        const move = (ev) => {
+          width = DeepRead.Rail.clampWidth(startWidth + dir * (ev.clientX - startX));
+          this._applySizing(width);
+          this.schedule(true);
+        };
+        const up = () => {
+          handle.classList.remove("dr-dragging");
+          handle.removeEventListener("pointermove", move);
+          handle.removeEventListener("pointerup", up);
+          handle.removeEventListener("pointercancel", up);
+          if (width !== startWidth) DeepRead.prefs.set("view.railWidth", width);
+        };
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", up);
+        handle.addEventListener("pointercancel", up);
+      });
+      return handle;
+    }
+
+    /** Translation fold of a card: default from the settings, flipped per card by the reader. */
+    _translationOpen(key) {
+      const byDefault = DeepRead.prefs.get("cards.translationOpen") === true;
+      return this.trToggled.has(key) ? !byDefault : byDefault;
     }
 
     schedule(remeasure = false) {
@@ -522,7 +614,8 @@
       const p = item.data;
       const levels = (p.points || []).map((pt) => this.session.pointLevel(pt)).join("");
       const attached = this.session.flashcardsForParagraph(item.key).map((c) => this._cardSignature(c)).join("||");
-      return `p|${this.session.paragraphSummary(p)}|${levels}|${this.isOpen(item.key)}|${this.focusKey === item.key}|${this.overlay.options.translationPopup}`
+      return `p|${this.session.paragraphSummary(p)}|${levels}|${this.isOpen(item.key)}|${this.focusKey === item.key}|${this._translationOpen(item.key)}`
+        + `|${this.session.explanation(item.key)}|${this.session.isExplaining(item.key)}`
         + `|${this.compactPages?.has(`${item.side || "right"}:${item.pageIndex}`) ? "c" : ""}`
         + `|${this.session.paragraphNote(item.key)}|${this.noteEditing === item.key}|${attached}`;
     }
@@ -581,7 +674,7 @@
       node.classList.toggle("dr-compact", !!this.compactPages?.has(`${side}:${paragraph.pageIndex}`) && !this.isOpen(key));
       const head = el(doc, "div", "dr-rhead");
       const summary = el(doc, "div", "dr-rsummary", session.paragraphSummary(paragraph) || "…");
-      summary.title = DeepRead.bilingual("单击展开译文 · 双击编辑", "Click to expand translations · double-click to edit");
+      summary.title = DeepRead.bilingual("单击展开 / 收起 · 双击编辑", "Click to open / close · double-click to edit");
       summary.addEventListener("click", () => {
         if (summary.isContentEditable) return;
         if (this.isOpen(key)) {
@@ -641,14 +734,40 @@
         this.noteEditing = key;
         this._invalidate(key);
       });
+      if (DeepRead.Explainer?.eligible(paragraph)) {
+        this._button(actions, "讲", DeepRead.bilingual("重新生成 AI 讲解", "Regenerate the AI explanation"), () => {
+          session.explainParagraph(key).catch((e) => session._notify(DeepRead.util.formatError(e), "error"));
+        });
+      }
       this._button(actions, "AI", DeepRead.t("card.askAI"), () => {
-        session.askAI({ text: paragraph.paragraphText || "", pageIndex: paragraph.pageIndex });
+        session.askAI({ text: paragraph.paragraphText || "", pageIndex: paragraph.pageIndex, block: DeepRead.Rail.blockLabel(paragraph) });
       });
       this._button(actions, "×", DeepRead.bilingual("隐藏此卡片", "Hide this card"), () => {
         session.setCardHidden(key, true);
       });
       head.append(actions);
       node.append(head);
+
+      // Body: the AI's explanation of the paragraph.
+      const explanation = session.explanation(key);
+      if (explanation) {
+        const body = el(doc, "div", "dr-explain");
+        body.append(DeepRead.Markdown.render(doc, explanation));
+        node.append(body);
+      }
+      else if (session.isExplaining(key)) {
+        node.append(el(doc, "div", "dr-explain dr-explain-pending", DeepRead.bilingual("AI 讲解生成中…", "Writing the explanation…")));
+      }
+      else if (DeepRead.Explainer?.eligible(paragraph) && session.hasResults) {
+        const missing = el(doc, "div", "dr-explain dr-explain-missing");
+        const link = el(doc, "a", "", DeepRead.bilingual("生成 AI 讲解", "Explain this paragraph"));
+        link.addEventListener("click", (e) => {
+          e.stopPropagation();
+          session.explainParagraph(key).catch((err) => session._notify(DeepRead.util.formatError(err), "error"));
+        });
+        missing.append(link);
+        node.append(missing);
+      }
 
       const points = paragraph.points || [];
       if (points.length) {
@@ -658,11 +777,6 @@
           li.dataset.level = String(session.pointLevel(point));
           li.title = DeepRead.t("card.importance");
           li.append(el(doc, "span", "", point.summary || ""));
-          if (point.translation && this.overlay.options.translationPopup) {
-            const tr = el(doc, "div", "dr-rtr");
-            tr.append(DeepRead.Overlay.inlineMarkdown(doc, point.translation));
-            li.append(tr);
-          }
           li.addEventListener("pointerenter", () => this.overlay._drawHover(paragraph, point.id));
           li.addEventListener("pointerleave", () => this.overlay._drawHover(paragraph));
           li.addEventListener("click", (e) => {
@@ -672,6 +786,27 @@
           list.append(li);
         }
         node.append(list);
+      }
+
+      // The translation is one part of the card, folded by default.
+      const translation = this.overlay._paragraphTranslation(paragraph);
+      if (translation) {
+        const open = this._translationOpen(key);
+        const wrap = el(doc, "div", "dr-trwrap");
+        const toggle = el(doc, "span", "dr-trtoggle", `${open ? "▾" : "▸"} ${DeepRead.bilingual("译文", "Translation")}`);
+        toggle.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (this.trToggled.has(key)) this.trToggled.delete(key);
+          else this.trToggled.add(key);
+          this._invalidate(key);
+        });
+        wrap.append(toggle);
+        if (open) {
+          const body = el(doc, "div", "dr-trbody");
+          body.append(DeepRead.Overlay.inlineMarkdown(doc, translation));
+          wrap.append(body);
+        }
+        node.append(wrap);
       }
 
       // The reader's own understanding: always expanded, never folded.

@@ -231,3 +231,21 @@ v0.4–v0.5 (ReadFlow client, built-in full-document translation, translated-PDF
   replacing any older `.deepread-toolbar`), and `Toolbar.unregister` (shutdown) removes ours.
   Test: `E2E_BASE_XPI=<released.xpi> E2E_UPDATE_XPI=<new.xpi> scripts/e2e.sh test/e2e/upgrade.js`;
   `test/e2e/restart.js` covers disable/enable.
+
+## v0.7: cards built around the AI explanation
+
+- `DeepRead.Explainer` (`services/explainer.js`): per-page batches → `{"explanations":[{key, explanation}]}`; keys
+  `p_<page>_<para>`; `eligible()` = text / text_with_equation ≥ 40 chars. Stored in `papers.explanations`
+  ({ key: { text, at } }, column added by a migration in `Store.init`). Session: `explanations`, `explaining`,
+  `explainAll({ only })` (auto after `run()` unless pref `cards.autoExplain` is false; `onPage` fills cards
+  progressively), `explainParagraph(key)` (card "讲", and on open when missing), `missingExplanations()`.
+- Card order: summary · explanation (Markdown + KaTeX) · key points · folded translation (`▸ 译文`, default from
+  pref `cards.translationOpen`, per-card flips in `rail.trToggled`) · 我的理解 · attached flashcards.
+- Sizing: CSS vars `--dr-rail-width` / `--dr-card-font` from prefs `view.railWidth` (200–520) / `view.cardFontSize`
+  (10–18), updated live by pref observers; `.dr-resize` drag handle on the rail edge facing the PDF; −/+ rows
+  in the ▾ menu. Card CSS sizes are in em so everything scales with the font.
+- Hover translation is now a panel below the paragraph (above when the page has no room), paragraph outlined.
+- Chat: system prompt gets "# Paragraph blocks" (label `[p. 3 ¶2]`, summary, AI explanation, reader's note; ≤30% of
+  `chat.maxContextChars`); quotes from cards carry `block`. `linkPageRefs` links `p. 3 ¶2` →
+  `session.openBlock(page, para)`. `DeepRead.ChatPane.systemPrompt(session)` is exposed for tests.
+- e2e: `test/e2e/cards.js`.

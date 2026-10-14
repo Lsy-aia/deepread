@@ -182,6 +182,20 @@
 			<checkbox id="deepread-pref-view-hovercards" data-l10n-id="deepread-pref-view-hovercards" preference="extensions.zotero.deepread.view.hoverCards"/>
 			<checkbox id="deepread-pref-view-translation" data-l10n-id="deepread-pref-view-translation" preference="extensions.zotero.deepread.view.translationPopup"/>
 			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-card-width" control="deepread-pref-card-width"/>
+				<html:input id="deepread-pref-card-width" class="deepread-pref-slider" type="range" min="200" max="520" step="10"/>
+				<label id="deepread-pref-card-width-value" class="deepread-pref-slider-value" value=""/>
+			</hbox>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-card-fontsize" control="deepread-pref-card-fontsize"/>
+				<html:input id="deepread-pref-card-fontsize" class="deepread-pref-slider" type="range" min="10" max="18" step="1"/>
+				<label id="deepread-pref-card-fontsize-value" class="deepread-pref-slider-value" value=""/>
+			</hbox>
+			<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-card-size-hint"/>
+			<checkbox id="deepread-pref-cards-autoexplain" data-l10n-id="deepread-pref-cards-autoexplain" preference="extensions.zotero.deepread.cards.autoExplain"/>
+			<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-cards-autoexplain-hint"/>
+			<checkbox id="deepread-pref-cards-translationopen" data-l10n-id="deepread-pref-cards-translationopen" preference="extensions.zotero.deepread.cards.translationOpen"/>
+			<hbox align="center" class="deepread-pref-row">
 				<label data-l10n-id="deepread-pref-chat-maxcontext" control="deepread-pref-chat-maxcontext"/>
 				<html:input id="deepread-pref-chat-maxcontext" type="number" min="1000" step="1000" size="10" preference="extensions.zotero.deepread.chat.maxContextChars"/>
 			</hbox>

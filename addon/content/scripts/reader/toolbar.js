@@ -24,6 +24,11 @@
 .deepread-menu button:hover { background: var(--fill-quinary, rgba(0,0,0,0.06)); }
 .deepread-menu .dr-check { width: 14px; display: inline-block; }
 .deepread-menu hr { border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 4px 2px; }
+.deepread-menu .dr-menu-row { display: flex; align-items: center; gap: 4px; padding: 3px 8px 3px 30px; }
+.deepread-menu .dr-menu-row .dr-label { flex: 1; }
+.deepread-menu .dr-menu-row button { width: auto; min-width: 26px; padding: 1px 6px; justify-content: center;
+  border: 1px solid rgba(0,0,0,0.15); }
+.deepread-menu .dr-menu-row .dr-value { min-width: 44px; text-align: center; opacity: 0.75; }
 .deepread-toast { position: fixed; right: 16px; bottom: 16px; z-index: 2147483002; max-width: 380px; padding: 9px 12px;
   border-radius: 8px; background: #1f2328; color: #fff; font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, sans-serif;
   box-shadow: 0 6px 20px rgba(0,0,0,0.25); white-space: pre-wrap; }
@@ -92,6 +97,41 @@
     });
   }
 
+  /** "生成 AI 讲解" for papers deep-read before explanations existed (or after they were turned off). */
+  function explainItem(session, doc, item) {
+    if (!session.hasResults || !DeepRead.Explainer) return null;
+    const missing = session.missingExplanations().length;
+    const running = session.explaining.size;
+    if (!missing && !running) return null;
+    const label = running
+      ? DeepRead.bilingual(`AI 讲解生成中（${running} 段）…`, `Writing explanations (${running})…`)
+      : DeepRead.bilingual(`生成 AI 讲解（${missing} 段）`, `Explain paragraphs (${missing})`);
+    return item([h(doc, "span", { class: "dr-check" }), label], () => {
+      if (running) return;
+      session.explainAll()
+        .then((count) => DeepRead.Toast.show(doc, DeepRead.bilingual(`已生成 ${count} 段 AI 讲解`, `${count} explanations written`)))
+        .catch((error) => {
+          DeepRead.Toast.show(doc, DeepRead.util.formatError(error), "error");
+          if (error?.configError) DeepRead.openPreferences();
+        });
+    });
+  }
+
+  /** A menu row with −/+ buttons that adjust a numeric pref without closing the menu. */
+  function sizeRow(doc, label, prefKey, step, clamp, format) {
+    const value = h(doc, "span", { class: "dr-value" });
+    const current = () => clamp(DeepRead.prefs.number(prefKey, NaN));
+    const sync = () => { value.textContent = format(current()); };
+    const change = (delta) => (e) => {
+      e.stopPropagation();
+      DeepRead.prefs.set(prefKey, clamp(current() + delta));
+      sync();
+    };
+    sync();
+    return h(doc, "div", { class: "dr-menu-row" }, h(doc, "span", { class: "dr-label" }, label),
+      h(doc, "button", { onclick: change(-step), title: "−" }, "−"), value, h(doc, "button", { onclick: change(step), title: "+" }, "+"));
+  }
+
   function openMenu(session, doc, anchor) {
     doc.querySelector(".deepread-menu")?.remove();
     const check = (prefKey) => h(doc, "span", { class: "dr-check" }, DeepRead.prefs.get(prefKey) !== false ? "✓" : "");
@@ -112,7 +152,10 @@
     const menu = h(doc, "div", { class: "deepread-menu" },
       item([h(doc, "span", { class: "dr-check" }), session.hasResults ? DeepRead.t("toolbar.rerun") : DeepRead.t("toolbar.run")],
         () => onRun(session, doc)),
+      explainItem(session, doc, item),
       h(doc, "hr"),
+      sizeRow(doc, DeepRead.bilingual("卡片字号", "Card font"), "view.cardFontSize", 1, DeepRead.Rail.clampFont, (v) => `${v} px`),
+      sizeRow(doc, DeepRead.bilingual("卡片宽度", "Card width"), "view.railWidth", 20, DeepRead.Rail.clampWidth, (v) => `${v} px`),
       item([check("view.marginCards"), DeepRead.bilingual("页边卡片", "Margin cards")], () => toggleOption("view.marginCards", null)),
       item([h(doc, "span", { class: "dr-check" }, DeepRead.prefs.get("view.railLayout") !== "right" ? "✓" : ""),
         DeepRead.bilingual("双栏卡片（左栏段落放左边）", "Split cards (left-column paragraphs on the left)")], () => {

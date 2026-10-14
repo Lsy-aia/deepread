@@ -12,7 +12,7 @@ DeepRead.Store = {
   SCHEMA_VERSION: 1,
   db: null,
 
-  JSON_FIELDS: ["hierarchical_data", "article_summary", "block_mapping", "sections", "user_state", "content_list"],
+  JSON_FIELDS: ["hierarchical_data", "article_summary", "block_mapping", "sections", "user_state", "content_list", "explanations"],
   TEXT_FIELDS: ["result_dir", "language", "markdown", "github_url"],
 
   async init() {
@@ -40,9 +40,17 @@ DeepRead.Store = {
       markdown TEXT,
       github_url TEXT,
       user_state TEXT,
+      explanations TEXT,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
       updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
     )`);
+    // Migrate databases created before the `explanations` column existed.
+    const hasColumn = await this.db.valueQueryAsync(
+      "SELECT COUNT(*) FROM pragma_table_info('papers') WHERE name = 'explanations'"
+    );
+    if (!Number(hasColumn)) {
+      await this.db.queryAsync("ALTER TABLE papers ADD COLUMN explanations TEXT");
+    }
     await this.db.queryAsync(`CREATE TABLE IF NOT EXISTS chats (
       attachment_key TEXT PRIMARY KEY,
       messages TEXT,

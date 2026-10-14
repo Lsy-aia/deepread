@@ -54,6 +54,17 @@ E2E.run = async function () {
     providerVisible: [...root.querySelectorAll("[id*='mineru'], [id*='selfhost']")].filter((e) => !e.hidden).map((e) => e.id).slice(0, 8),
   });
   await shot(win, "prefs-top");
+  {
+    const fs = doc.getElementById("deepread-pref-card-fontsize");
+    const before = Zotero.Prefs.get("deepread.view.cardFontSize");
+    fs.value = "15";
+    fs.dispatchEvent(new win.Event("input", { bubbles: true }));
+    const after = Zotero.Prefs.get("deepread.view.cardFontSize");
+    const lbl = doc.getElementById("deepread-pref-card-fontsize-value")?.value;
+    Zotero.Prefs.set("deepread.view.cardFontSize", 12);
+    step("prefs-cardfontsize", { before, after, label: lbl, ok: after === 15 });
+    if (after !== 15) throw new Error("cardFontSize pref not updated by slider: " + after);
+  }
   const llmTest = root.querySelector("[id*='llm'][id*='test']");
   if (llmTest) {
     llmTest.click();

@@ -2,8 +2,8 @@
  * In-reader presentation of deep-read results.
  *
  * - Passive layers inside each pdf.js page (pointer-events: none): key-point highlights,
- *   hover outlines and the in-place hover translation (laid out like the original paragraph;
- *   hold Alt to see the original).
+ *   hover outlines and the hover translation (a panel right below / above the paragraph, typeset like
+ *   the original so both can be read; hold Alt to hide it).
  * - Interactive paragraph cards live in the *outer* reader document (reader.html), because the
  *   reader registers capture-phase pointer handlers on the PDF window for text selection.
  *
@@ -31,8 +31,9 @@
 .deepread-layer .dr-rect { position: absolute; border-radius: 2px; mix-blend-mode: multiply; }
 .deepread-layer .dr-outline { position: absolute; border-radius: 4px;
   box-shadow: 0 0 0 1.5px rgba(251, 191, 36, 0.85); background: rgba(251, 191, 36, 0.06); }
-.deepread-layer .dr-translation { position: absolute; overflow: hidden; box-sizing: border-box; padding: 0;
-  background: #fffffe; color: #111; box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.55);
+.deepread-layer .dr-translation { position: absolute; box-sizing: content-box; padding: 3px 5px;
+  margin-left: -6px; background: #fffef9; color: #111; border-radius: 4px;
+  border: 1px solid rgba(251, 191, 36, 0.7); box-shadow: 0 3px 12px rgba(0, 0, 0, 0.16);
   font-family: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
   text-align: justify; text-align-last: start; overflow-wrap: anywhere; hyphens: none; }
 .deepread-layer .dr-translation.dr-title { font-weight: 700; text-align: start; }
@@ -63,6 +64,14 @@
 .deepread-card li[data-level="3"]::before { background: #ef4444; }
 .deepread-card li:hover { background: rgba(251, 191, 36, 0.16); }
 .deepread-card .dr-point-summary { font-weight: 500; }
+.deepread-card { font-size: var(--dr-card-font, 13px); }
+.deepread-card .dr-summary { font-size: 1.04em; }
+.deepread-card .dr-explain { margin-top: 6px; }
+.deepread-card .dr-explain p { margin: 0.3em 0; }
+.deepread-card .dr-explain-pending { color: #8c959f; font-style: italic; }
+.deepread-card .dr-trtoggle { display: inline-block; margin-top: 6px; font-size: 0.9em; color: #6b7280; cursor: pointer; user-select: none; }
+.deepread-card .dr-trbody { margin-top: 2px; padding: 4px 8px; border-left: 3px solid #93c5fd; border-radius: 4px;
+  background: rgba(59,130,246,0.06); font-family: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", serif; }
 .deepread-card .dr-point-translation { color: #424a53; margin-top: 2px; }
 .deepread-card .dr-foot { margin-top: 4px; font-size: 11px; color: #8c959f; }
 .deepread-card .dr-hnote { margin-top: 6px; padding: 4px 8px; border-radius: 6px; border-left: 3px solid #10b981;
@@ -472,33 +481,44 @@
       return frag.cloneNode(true);
     }
 
-    /** Paints the translation over the paragraph with the original's font size, line pitch and indent. */
+    /**
+     * Shows the translation in a panel right below the paragraph (above it when the page has no room
+     * below), as wide as the paragraph and typeset with the original's font size, line pitch and indent,
+     * so the original stays readable.
+     */
     _drawTranslation(ctx, paragraph) {
       const text = this._paragraphTranslation(paragraph);
       if (!text) return false;
-      const metrics = this._lineMetrics(ctx.geom, paragraph);
-      const [x1, y1, x2, y2] = paragraph.bbox;
-      const pad = 1; // PDF units: cover glyph edges of the original
+      const geom = ctx.geom;
+      const metrics = this._lineMetrics(geom, paragraph);
+      const pct = this._toPercent(geom, paragraph.bbox);
+      const pageH = geom.div.clientHeight || geom.h;
+      const gapPct = (4 / pageH) * 100;
       const title = paragraph.paragraphType === "title";
-      const box = this._addRect(ctx.transient, ctx.geom, [x1 - pad, y1 - pad, x2 + pad, y2 + pad], title ? "dr-translation dr-title" : "dr-translation");
-      box.append(this._translationContent(paragraph, text));
+      const box = el(this.pdfDoc, "div", title ? "dr-translation dr-title" : "dr-translation");
+      box.style.left = `${pct.left}%`;
+      box.style.width = `${pct.width}%`;
+      box.style.fontSize = `${metrics.fontSize}px`;
+      box.style.lineHeight = `${metrics.lineHeight}px`;
       box.style.textIndent = `${metrics.indent}px`;
-      const height = box.clientHeight;
-      // Keep the original size when it fits; otherwise shrink size and pitch together.
-      let size = metrics.fontSize;
-      let lineHeight = metrics.lineHeight;
-      for (let i = 0; i < 24; i++) {
-        box.style.fontSize = `${size}px`;
-        box.style.lineHeight = `${lineHeight}px`;
-        if (box.scrollHeight <= height + 1 || size <= metrics.fontSize * 0.55) break;
-        size *= 0.95;
-        lineHeight *= 0.95;
+      box.append(this._translationContent(paragraph, text));
+      // Measure below first, then flip above if it does not fit on the page.
+      box.style.top = `${pct.top + pct.height + gapPct}%`;
+      ctx.transient.append(box);
+      const height = box.offsetHeight;
+      const spaceBelow = pageH * (1 - (pct.top + pct.height + gapPct) / 100);
+      const spaceAbove = pageH * ((pct.top - gapPct) / 100);
+      if (height > spaceBelow && spaceAbove > spaceBelow) {
+        box.style.top = "";
+        box.style.bottom = `${100 - pct.top + gapPct}%`;
+        box.dataset.side = "above";
       }
-      if (box.scrollHeight > height + 1) {
-        box.style.height = "auto";
-        box.style.overflow = "visible";
-      }
-      box.dataset.fontSize = size.toFixed(2);
+      else box.dataset.side = "below";
+      box.dataset.fontSize = metrics.fontSize.toFixed(2);
+      // Outline the paragraph the panel belongs to.
+      const pad = 2;
+      const [x1, y1, x2, y2] = paragraph.bbox;
+      this._addRect(ctx.transient, geom, [x1 - pad, y1 - pad, x2 + pad, y2 + pad], "dr-outline");
       return true;
     }
 
@@ -628,6 +648,18 @@
       this.hoverPara = paragraph;
       this._showCard(paragraph);
       this.cardPinned = true;
+      const key = `p_${paragraph.pageIndex}_${paragraph.paragraphIndex}`;
+      if (DeepRead.prefs.get("cards.autoExplain") !== false && !this.session.explanation(key)
+          && DeepRead.Explainer?.eligible(paragraph) && DeepRead.LLM.isConfigured()) {
+        const refresh = () => {
+          if (!this.cardPinned || this.cardPara !== paragraph) return;
+          this.hoverPara = paragraph;
+          this._showCard(paragraph);
+        };
+        const promise = this.session.explainParagraph(key);
+        refresh(); // shows "generating…"
+        promise.then(refresh, (e) => DeepRead.log("explain on open failed", String(e)));
+      }
     }
 
     /* ---------- card ---------- */
@@ -693,10 +725,23 @@
         this.session.createFlashcard({ pageIndex: paragraph.pageIndex, rects: paragraph.rects, quote: paragraph.paragraphText || "", source: "paragraph" });
       });
       button("AI", DeepRead.t("card.askAI"), () => {
-        this.session.askAI({ text: paragraph.paragraphText || "", pageIndex: paragraph.pageIndex });
+        this.session.askAI({ text: paragraph.paragraphText || "", pageIndex: paragraph.pageIndex, block: DeepRead.Rail.blockLabel(paragraph) });
       });
       head.append(actions);
       card.append(head);
+      card.style.setProperty("--dr-card-font", `${DeepRead.Rail.clampFont(DeepRead.prefs.number("view.cardFontSize", 12)) + 1}px`);
+
+      // Body: the AI's explanation; the translation is a folded part.
+      const key = `p_${paragraph.pageIndex}_${paragraph.paragraphIndex}`;
+      const explanation = this.session.explanation?.(key);
+      if (explanation) {
+        const body = el(doc, "div", "dr-explain");
+        body.append(DeepRead.Markdown.render(doc, explanation));
+        card.append(body);
+      }
+      else if (this.session.isExplaining?.(key)) {
+        card.append(el(doc, "div", "dr-explain dr-explain-pending", DeepRead.bilingual("AI 讲解生成中…", "Writing the explanation…")));
+      }
 
       const list = el(doc, "ol");
       for (const point of paragraph.points || []) {
@@ -705,11 +750,6 @@
         li.dataset.level = String(this.session.pointLevel(point));
         li.title = DeepRead.t("card.importance");
         li.append(el(doc, "div", "dr-point-summary", point.summary || ""));
-        if (showTranslation && point.translation) {
-          const tr = el(doc, "div", "dr-point-translation");
-          tr.append(inlineMarkdown(doc, point.translation));
-          li.append(tr);
-        }
         li.addEventListener("pointerenter", () => this._drawHover(paragraph, point.id));
         li.addEventListener("pointerleave", () => this._drawHover(paragraph));
         li.addEventListener("click", (e) => {
@@ -721,13 +761,31 @@
         list.append(li);
       }
       if (list.childNodes.length) card.append(list);
+      const translation = this._paragraphTranslation(paragraph);
+      if (translation) {
+        let open = DeepRead.prefs.get("cards.translationOpen") === true;
+        const toggle = el(doc, "span", "dr-trtoggle");
+        const body = el(doc, "div", "dr-trbody");
+        body.append(inlineMarkdown(doc, translation));
+        const sync = () => {
+          toggle.textContent = `${open ? "▾" : "▸"} ${DeepRead.bilingual("译文", "Translation")}`;
+          body.hidden = !open;
+        };
+        toggle.addEventListener("click", (e) => {
+          e.stopPropagation();
+          open = !open;
+          sync();
+        });
+        sync();
+        card.append(toggle, body);
+      }
       const note = this.session.paragraphNote?.(`p_${paragraph.pageIndex}_${paragraph.paragraphIndex}`);
       if (note) {
         const block = el(doc, "div", "dr-hnote");
         block.append(el(doc, "div", "dr-hnote-label", DeepRead.bilingual("我的理解", "My understanding")), el(doc, "div", "", note));
         card.append(block);
       }
-      const foot = showTranslation && this._paragraphTranslation(paragraph) ? ` · ${DeepRead.bilingual("按住 Alt 看原文", "hold Alt for the original")}` : "";
+      const foot = showTranslation && translation ? ` · ${DeepRead.bilingual("按住 Alt 隐藏悬停译文", "hold Alt to hide the hover translation")}` : "";
       card.append(el(doc, "div", "dr-foot", `p. ${paragraph.pageIndex + 1}${foot}`));
 
       card.hidden = false;

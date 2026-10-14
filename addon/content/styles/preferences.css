@@ -5,3 +5,5 @@
 .deepread-pref-row { margin-block: 3px; }
 .deepread-pref-row > label { min-width: 120px; }
 .deepread-pref-input { flex: 1; min-width: 0; }
+.deepread-pref-slider { flex: 1; min-width: 0; max-width: 260px; }
+.deepread-pref-slider-value { min-width: 56px; margin-inline-start: 8px; }

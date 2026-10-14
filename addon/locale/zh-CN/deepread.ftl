@@ -88,6 +88,14 @@ deepread-pref-view-hovercards =
     .label = 悬停显示要点卡片
 deepread-pref-view-translation =
     .label = 悬停段落时原位显示译文（按住 Alt 看原文）
+deepread-pref-card-width = 卡片宽度
+deepread-pref-card-fontsize = 卡片字号
+deepread-pref-card-size-hint = 也可以拖动卡片栏靠近 PDF 的边缘调整宽度
+deepread-pref-cards-autoexplain =
+    .label = 精读后自动生成每段的 AI 讲解
+deepread-pref-cards-autoexplain-hint = 页边卡片以 AI 讲解为主体，译文默认折叠；关闭后可在卡片上手动生成
+deepread-pref-cards-translationopen =
+    .label = 卡片中的译文默认展开
 deepread-pref-chat-maxcontext = 对话最大上下文字符数
 
 deepread-pref-privacy-title = 隐私

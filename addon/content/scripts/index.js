@@ -19,6 +19,7 @@
     "services/grobidParser.js",
     "services/parser.js",
     "services/flashcards.js",
+    "services/explainer.js",
     "services/github.js",
     "services/deepwiki.js",
     "pipeline/languages.js",

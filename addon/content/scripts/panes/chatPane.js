@@ -38,20 +38,50 @@
     return text;
   }
 
+  /**
+   * The margin cards ("blocks"): per paragraph, its summary and the AI explanation the reader sees,
+   * labelled like the cards (p. 3 ¶2) so answers can build on and point to them.
+   */
+  function blockNotes(session, maxChars) {
+    const lines = [];
+    let used = 0;
+    for (const page of session.data?.hierarchicalData || []) {
+      for (const paragraph of page.paragraphs || []) {
+        const key = `p_${page.pageIndex}_${paragraph.paragraphIndex}`;
+        const explanation = session.explanation?.(key);
+        const note = session.paragraphNote?.(key);
+        if (!explanation && !note) continue;
+        const label = `p. ${page.pageIndex + 1} ¶${paragraph.paragraphIndex + 1}`;
+        const summary = session.paragraphSummary?.({ ...paragraph, pageIndex: page.pageIndex }) || paragraph.paragraphSummary || "";
+        const line = [`[${label}] ${summary}`, explanation ? `AI explanation: ${explanation}` : "", note ? `Reader's note: ${note}` : ""]
+          .filter(Boolean).join("\n");
+        if (used + line.length > maxChars) return lines.join("\n\n") + "\n\n[…more blocks truncated…]";
+        used += line.length;
+        lines.push(line);
+      }
+    }
+    return lines.join("\n\n");
+  }
+
   function systemPrompt(session) {
     const lang = DeepRead.PARSE_LANGUAGES[DeepRead.prefs.language()] || DeepRead.PARSE_LANGUAGES.zh;
     const maxChars = DeepRead.prefs.number("chat.maxContextChars", 120000);
-    const text = fullText(session, maxChars);
+    const blocks = blockNotes(session, Math.floor(maxChars * 0.3));
+    const text = fullText(session, Math.max(4000, maxChars - blocks.length));
     return [
       "You are an expert research assistant helping the user read an academic paper.",
       `Answer in ${lang.instruction} unless the user writes in another language.`,
       "Ground every claim in the paper below. When you use the paper, cite pages like (p. 3).",
+      "The reader studies the paper through paragraph blocks (cards) labelled like (p. 3 ¶2), each with an AI explanation "
+        + "and sometimes the reader's own note. Build on those explanations, stay consistent with them or correct them "
+        + "explicitly, and cite the blocks you rely on as (p. 3 ¶2).",
       "If the paper does not contain the answer, say so before giving general knowledge.",
       "Use Markdown. Write math with $...$ or $$...$$.",
       "",
       "# Paper metadata",
       paperMeta(session) || "(unknown)",
       "",
+      ...(blocks ? ["# Paragraph blocks (AI explanations and the reader's notes)", blocks, ""] : []),
       "# Paper full text",
       text || "(Full text not available yet; the user has not run the deep-read parse. Rely on metadata and quotes.)",
     ].join("\n");
@@ -59,13 +89,15 @@
 
   function userContent(message) {
     const quotes = (message.quotes || []).map((q) => {
-      const page = Number.isInteger(q.pageIndex) ? ` (p. ${q.pageIndex + 1})` : "";
+      const page = q.block ? ` (${q.block})` : (Number.isInteger(q.pageIndex) ? ` (p. ${q.pageIndex + 1})` : "");
       return `> ${q.text.replace(/\n+/g, "\n> ")}${page}`;
     });
     return [...quotes, message.content].filter(Boolean).join("\n\n");
   }
 
   DeepRead.ChatPane = {
+    systemPrompt,
+
     async ensureLoaded(session) {
       if (session.chat) return session.chat;
       if (!session._chatLoading) {
@@ -165,7 +197,10 @@
     else {
       const content = h("div", { class: "dr-msg-text dr-markdown" });
       content.append(DeepRead.Markdown.render(doc, message.content || (isStreaming ? "…" : ""), root));
-      DeepRead.Markdown.linkPageRefs(content, (page) => session.reader.navigate({ pageIndex: page - 1 }));
+      DeepRead.Markdown.linkPageRefs(content, (page, paragraph) => {
+        if (paragraph) session.openBlock(page - 1, paragraph - 1);
+        else session.reader.navigate({ pageIndex: page - 1 });
+      });
       node.append(content);
     }
     return node;

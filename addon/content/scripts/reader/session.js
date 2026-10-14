@@ -150,8 +150,11 @@
       this.rail = DeepRead.Rail ? new DeepRead.Rail(this) : null;
       this.editingFlashcard = null;
       this.flipped = new Set();
+      this.explanations = {}; // paragraph key → { text, at }: the "AI 讲解" shown as the card body
+      this.explaining = new Set(); // keys being generated
+      this._explainAbort = null;
       this.on((event) => {
-        if (event === "change" || event === "flashcards") this.rail?.refresh();
+        if (event === "change" || event === "flashcards" || event === "explanations") this.rail?.refresh();
         if (event === "change") for (const card of this.flashcards || []) delete card._autoKey;
       });
     }
@@ -224,6 +227,7 @@
           language: stored.language,
         };
         this.userState = { pointImportance: {}, ...(stored.user_state || {}) };
+        this.explanations = stored.explanations || {};
         this.status = "ready";
       }
       else {
@@ -238,6 +242,7 @@
 
     destroy() {
       this.cancel();
+      this._explainAbort?.abort();
       this.rail?.detach();
       this.overlay.detach();
       this._listeners.clear();
@@ -409,10 +414,17 @@
         });
         this.data = data;
         this.userState = { pointImportance: {} };
+        this._explainAbort?.abort();
+        this.explanations = {};
+        this.explaining.clear();
         this.overlay.setData(data.hierarchicalData);
         this.status = "ready";
         this.progress = { percent: 100, message: DeepRead.t("flow.done") };
         this._emit();
+        // Card bodies: AI explanations fill in page by page after the deep read.
+        if (DeepRead.prefs.get("cards.autoExplain") !== false) {
+          this.explainAll().catch((e) => DeepRead.log("explanations failed", String(e)));
+        }
         return true;
       }
       catch (error) {
@@ -509,6 +521,9 @@
 
     async clearResults() {
       this.cancel();
+      this._explainAbort?.abort();
+      this.explanations = {};
+      this.explaining.clear();
       await DeepRead.Store.deletePaper(this.key);
       this.data = null;
       this.chat = null;
@@ -517,6 +532,117 @@
       this.progress = { percent: 0, message: "" };
       this.overlay.setData([]);
       this._emit();
+    }
+
+    /* ---------- AI explanations (card bodies) ---------- */
+
+    explanation(key) {
+      return this.explanations?.[key]?.text || "";
+    }
+
+    isExplaining(key) {
+      return this.explaining.has(key);
+    }
+
+    /** Title + abstract, given to the explainer as context. */
+    paperContext() {
+      const item = this.parentItem;
+      if (!item?.isRegularItem?.()) return "";
+      return [
+        item.getField("title") ? `Title: ${item.getField("title")}` : "",
+        item.getField("abstractNote") ? `Abstract: ${String(item.getField("abstractNote")).slice(0, 2000)}` : "",
+      ].filter(Boolean).join("\n");
+    }
+
+    _paragraphByKey(key) {
+      const m = /^p_(\d+)_(\d+)$/.exec(key || "");
+      if (!m) return null;
+      const page = (this.data?.hierarchicalData || []).find((p) => p.pageIndex === Number(m[1]));
+      const paragraph = page?.paragraphs?.find((p) => p.paragraphIndex === Number(m[2]));
+      return paragraph ? { page, paragraph } : null;
+    }
+
+    /** Paragraphs that can have an explanation but don't yet. */
+    missingExplanations() {
+      const keys = [];
+      for (const page of this.data?.hierarchicalData || []) {
+        for (const paragraph of page.paragraphs || []) {
+          const key = DeepRead.Explainer.key(page.pageIndex, paragraph.paragraphIndex);
+          if (DeepRead.Explainer.eligible(paragraph) && !this.explanation(key) && !this.explaining.has(key)) keys.push(key);
+        }
+      }
+      return keys;
+    }
+
+    /** Generate missing explanations for the whole paper (or `only` those keys), page by page. */
+    async explainAll({ only } = {}) {
+      if (!this.hasResults || !DeepRead.LLM.isConfigured()) return 0;
+      const keys = only ? [...only].filter((k) => !this.explaining.has(k)) : this.missingExplanations();
+      if (!keys.length) return 0;
+      const controller = this._explainAbort && !this._explainAbort.signal.aborted ? this._explainAbort : new AbortController();
+      this._explainAbort = controller;
+      for (const key of keys) this.explaining.add(key);
+      this._emit("explanations");
+      let count = 0;
+      try {
+        await DeepRead.Explainer.explainPages(this.data.hierarchicalData, {
+          targetLang: DeepRead.prefs.language(),
+          paperContext: this.paperContext(),
+          only: new Set(keys),
+          signal: controller.signal,
+          onPage: (_pageIndex, map) => {
+            for (const [key, text] of map) {
+              this.explanations[key] = { text, at: Date.now() };
+              this.explaining.delete(key);
+              count++;
+            }
+            this._saveExplanationsSoon();
+            this._emit("explanations");
+          },
+        });
+      }
+      finally {
+        for (const key of keys) this.explaining.delete(key);
+        this._emit("explanations");
+      }
+      return count;
+    }
+
+    /** (Re)generate one paragraph's explanation. */
+    async explainParagraph(key) {
+      const found = this._paragraphByKey(key);
+      if (!found || this.explaining.has(key)) return null;
+      if (!DeepRead.LLM.isConfigured()) throw Object.assign(new Error(DeepRead.t("error.noLLM")), { configError: true });
+      const { page, paragraph } = found;
+      const index = page.paragraphs.indexOf(paragraph);
+      const neighbors = page.paragraphs.slice(Math.max(0, index - 2), index).map((p) => p.paragraphText || "").filter(Boolean);
+      this.explaining.add(key);
+      this._emit("explanations");
+      try {
+        const text = await DeepRead.Explainer.explainOne(paragraph, {
+          pageIndex: page.pageIndex,
+          targetLang: DeepRead.prefs.language(),
+          paperContext: this.paperContext(),
+          neighbors,
+        });
+        if (text) {
+          this.explanations[key] = { text, at: Date.now() };
+          this._saveExplanationsSoon();
+        }
+        return text;
+      }
+      finally {
+        this.explaining.delete(key);
+        this._emit("explanations");
+      }
+    }
+
+    _saveExplanationsSoon() {
+      clearTimeout(this._saveExplanationsTimer);
+      this._saveExplanationsTimer = setTimeout(() => {
+        DeepRead.Store.savePaper(this.key, this.item.id, { explanations: this.explanations })
+          .catch((e) => DeepRead.log("saving explanations failed", String(e)));
+      }, 800);
     }
 
     /* ---------- user state ---------- */
@@ -714,6 +840,15 @@
       return true;
     }
 
+    /** Jump to a paragraph block ("p. 3 ¶2" in the chat) and open its card. */
+    async openBlock(pageIndex, paragraphIndex) {
+      const paragraph = (this.overlay.pages.get(pageIndex) || []).find((p) => p.paragraphIndex === paragraphIndex);
+      if (!paragraph) return this.reader.navigate({ pageIndex });
+      await this.navigateToParagraph(paragraph);
+      this.overlay.openParagraph(paragraph);
+      return true;
+    }
+
     async navigateToBlockIds(blockIds) {
       for (const id of blockIds || []) {
         const block = this._blockByID(id);
@@ -740,9 +875,9 @@
 
     /* ---------- AI chat bridge ---------- */
 
-    askAI({ text, pageIndex }) {
+    askAI({ text, pageIndex, block }) {
       const quote = String(text || "").trim();
-      if (quote) this.pendingQuotes.push({ text: quote.slice(0, 8000), pageIndex });
+      if (quote) this.pendingQuotes.push({ text: quote.slice(0, 8000), pageIndex, block });
       this._emit("ask");
       DeepRead.Panes.reveal(this.reader, "chat");
     }

@@ -88,6 +88,14 @@ deepread-pref-view-hovercards =
     .label = Show key-point cards on hover
 deepread-pref-view-translation =
     .label = Show the translation in place on hover (hold Alt for the original)
+deepread-pref-card-width = Card width
+deepread-pref-card-fontsize = Card font size
+deepread-pref-card-size-hint = You can also drag the edge of the card column next to the PDF to resize it
+deepread-pref-cards-autoexplain =
+    .label = Generate an AI explanation for each paragraph after deep reading
+deepread-pref-cards-autoexplain-hint = Margin cards are built around the AI explanation, with the translation collapsed by default. If turned off, you can generate one manually on a card.
+deepread-pref-cards-translationopen =
+    .label = Expand the translation in cards by default
 deepread-pref-chat-maxcontext = Chat max context characters
 
 deepread-pref-privacy-title = Privacy
