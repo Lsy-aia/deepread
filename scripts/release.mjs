@@ -49,6 +49,8 @@ writeJSON("addon/manifest.json", manifest);
 const pkg = readJSON("package.json");
 pkg.version = version;
 writeJSON("package.json", pkg);
+const readmePath = path.join(root, "README.md");
+fs.writeFileSync(readmePath, fs.readFileSync(readmePath, "utf8").replace(/当前版本 \*\*v\d+\.\d+\.\d+\*\*/, `当前版本 **${tag}**`));
 
 // 2. tests + build
 run("npm", ["test"]);
@@ -67,6 +69,7 @@ const notesFile = path.join(root, "build", `notes-${version}.md`);
 fs.writeFileSync(notesFile, [
   `DeepRead ${tag}`,
   "",
+  ...changelogSection(version),
   "安装 / Install: Zotero → 工具 / Tools → 插件 / Plugins → ⚙ → 从文件安装附加组件 / Install Add-on From File → 选择 / choose `" + xpiName + "`.",
   "已安装的 DeepRead 会自动更新到此版本 / Installed copies update automatically.",
   "",
@@ -95,3 +98,18 @@ run("git", ["commit", "-m", `update.json: ${tag}`]);
 run("git", ["push", "origin", "main"]);
 
 console.log(`\nReleased ${tag}: https://github.com/${REPO}/releases/tag/${tag}`);
+
+/** The "## vX.Y.Z" section of CHANGELOG.md (without its heading), followed by a blank line. */
+function changelogSection(version) {
+  const file = path.join(root, "CHANGELOG.md");
+  if (!fs.existsSync(file)) return [];
+  const lines = fs.readFileSync(file, "utf8").split("\n");
+  const start = lines.findIndex((l) => l.trim() === `## v${version}`);
+  if (start < 0) {
+    console.warn(`CHANGELOG.md has no "## v${version}" section; release notes will only have install instructions`);
+    return [];
+  }
+  let end = lines.findIndex((l, i) => i > start && /^## /.test(l));
+  if (end < 0) end = lines.length;
+  return [...lines.slice(start + 1, end).join("\n").trim().split("\n"), ""];
+}

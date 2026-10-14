@@ -5,7 +5,19 @@ DeepRead 是一个免费、开源的 Zotero 插件，支持 Zotero 7–10。它�
 - **不需要账号、积分或订阅。** 解析和大模型服务都用你自己的 API Key。
 - **PDF 内容只发往你在设置里配置的服务。** 插件不会连接其他任何服务器。
 
-## 功能（v0.4）
+当前版本 **v0.7.0**，各版本的改动见 [更新日志](CHANGELOG.md)。
+
+## 快速上手
+
+1. 从 [Releases](https://github.com/Lsy-aia/deepread/releases/latest) 下载 `deepread-x.y.z.xpi`，在 Zotero 的「工具 → 插件」里从文件安装（详见下方「安装」）。
+2. 打开「设置 → DeepRead」，选一个大模型预设，填入 API Key，点「测试连接」。PDF 解析默认使用内置解析，不需要额外配置。
+3. 打开一篇 PDF，点工具栏上的「AI 精读」。完成后：
+   - 页边卡片会显示每一段的摘要和 AI 讲解；
+   - 鼠标停在段落上，译文会显示在该段下方；
+   - 单击段落，会展开它的卡片；
+   - 在卡片上点「✎」可以写下「我的理解」，点「卡」可以生成闪卡，点「AI」可以就这一段提问。
+
+## 功能
 
 | 功能 | 说明 |
 |---|---|
@@ -72,18 +84,20 @@ DeepRead 是一个免费、开源的 Zotero 插件，支持 Zotero 7–10。它�
 
 ## 费用参考
 
-- **MinerU**：按页计费或计入免费额度。
+- **PDF 解析**：内置解析和 GROBID 都免费。只有使用 MinerU 官方 API 时，才按页计费或计入免费额度。
 - **大模型**：
-  - 精读时每页 1 次请求；另有 1 次请求生成速读卡，1 次请求过滤作者信息块。
+  - 精读：每页 1 次请求生成摘要、要点和译文；另有 1 次请求生成速读卡，1 次请求过滤作者信息块。
+  - AI 讲解：精读后每页再发 1 次请求（可以在设置里关闭自动生成）。单段重新生成或补生成，每段 1 次请求。
+  - 闪卡：每生成一张 1 次请求。选段翻译：每次 1 次请求。
   - AI 大纲需要你手动生成，每次 1 次请求。
-  - AI 对话每发一句消耗一次请求。上下文默认最多带 12 万字符的全文，可以在设置里调小。
+  - AI 对话每发一句消耗一次请求。上下文默认最多带 12 万字符，包括全文和各段的 AI 讲解；可以在设置里调小。
 
 ## 数据存放
 
 | 数据 | 位置 |
 |---|---|
-| 精读结果和对话 | Zotero 数据目录下的 `deepread.sqlite` |
-| MinerU 原始解析结果 | Zotero 数据目录下的 `deepread/mineru/<库ID>_<条目Key>/` |
+| 精读结果、AI 讲解、我的理解、闪卡和对话 | Zotero 数据目录下的 `deepread.sqlite` |
+| PDF 解析结果（`content_list.json`、`full.md`） | Zotero 数据目录下的 `deepread/mineru/<库ID>_<条目Key>/` |
 | API Key | Zotero 本机偏好设置，以明文保存 |
 
 要删除某篇文献的结果，在工具栏「▾」菜单中选「删除本文精读结果」。
@@ -92,15 +106,20 @@ DeepRead 是一个免费、开源的 Zotero 插件，支持 Zotero 7–10。它�
 
 ```bash
 npm install && npm run vendor          # 拷贝 marked / KaTeX 到 addon/content/lib
-node test/llm.test.mjs                 # LLM 客户端单元测试
-node test/pipeline-smoke.mjs           # 流水线冒烟测试（含合成端到端）
+npm test                               # 全部单元测试（CI 也运行这一组）
 python3 test/build-fixture.py          # 生成离线测试用的 MinerU 夹具
 scripts/e2e.sh test/e2e/basic.js       # 在隔离的无头 Zotero 10 中跑端到端测试（假 MinerU + 假大模型）
-scripts/e2e.sh test/e2e/ui.js          # 设置页 / 工具栏 UI 测试
+scripts/e2e.sh test/e2e/ui.js          # 设置页 / 工具栏 UI
+scripts/e2e.sh test/e2e/cards.js       # AI 讲解卡片、卡片大小、悬停翻译、对话上下文
+scripts/e2e.sh test/e2e/interact.js    # 悬停翻译排版、单击段落打开卡片
+E2E_BASE_XPI=old.xpi E2E_UPDATE_XPI=new.xpi scripts/e2e.sh test/e2e/upgrade.js   # 带着打开的 PDF 原地升级
 npm run build                          # 打包 build/deepread-<version>.xpi
-npm test                               # 全部单元测试（CI 也运行这一组）
-npm run release -- 0.3.2               # 发布新版本：测试 → 打包 → GitHub Release → 更新 update.json
+npm run release -- X.Y.Z               # 发布新版本：测试 → 打包 → GitHub Release → 更新 update.json
 ```
+
+发布前先在 [`CHANGELOG.md`](CHANGELOG.md) 里写好 `## vX.Y.Z` 一节。发布脚本会把这一节放进 GitHub Release 的说明。
+
+端到端测试共用 `.test-profile/`，不要同时运行多个。
 
 自动更新：`manifest.json` 中的 `update_url` 指向本仓库 `main` 分支上的 [`update.json`](update.json)。发布脚本会先上传 `.xpi`，再在 `update.json` 里登记这个版本，避免出现指向不存在文件的更新链接。
 
@@ -114,3 +133,4 @@ npm run release -- 0.3.2               # 发布新版本：测试 → 打包 →
 - 解析与提示词流水线移植自 Vibero。Vibero 是 Zotero 的 AGPL-3.0 分支，著作权归原作者所有。本插件不使用 Vibero 的名称、标识或任何服务。
 - 本插件基于 Zotero（AGPL-3.0）开发。
 - 打包了 marked（MIT）和 KaTeX（MIT）两个第三方库，详见 `NOTICE.md`。
+- v0.4–v0.5 的整篇翻译借鉴并移植了 ReadFlow / RetainPDF（MIT）的部分实现，这部分在 v0.6.0 中已移除，代码保留在 `v0.5.0` 标签中。
