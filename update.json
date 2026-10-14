@@ -3,6 +3,17 @@
     "deepread@lsy-aia.github.io": {
       "updates": [
         {
+          "version": "0.4.0",
+          "update_link": "https://github.com/Lsy-aia/deepread/releases/download/v0.4.0/deepread-0.4.0.xpi",
+          "update_hash": "sha256:b35c62bf0f46bcac66a5a6773a7e024de06f4a595d83e974eb1e5c5e5f5b5acc",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "7.0",
+              "strict_max_version": "10.9.9"
+            }
+          }
+        },
+        {
           "version": "0.3.3",
           "update_link": "https://github.com/Lsy-aia/deepread/releases/download/v0.3.3/deepread-0.3.3.xpi",
           "update_hash": "sha256:e30df517e6c78b84257154827d05b03e39aa834e5208a3d25feb673ba2f8189f",
