@@ -14,6 +14,7 @@
     "l10n.js",
     "services/store.js",
     "services/llm.js",
+    "services/updater.js",
     "services/textLayerParser.js",
     "services/grobidParser.js",
     "services/parser.js",
@@ -74,6 +75,8 @@
     for (const win of Zotero.getMainWindows()) {
       DeepRead.onMainWindowLoad(win);
     }
+    // After a (silent) update, tell the user once. Wait for the UI on app startup.
+    Zotero.uiReadyPromise.then(() => DeepRead.Updater.announceIfUpdated()).catch(() => {});
   };
 
   DeepRead.onMainWindowLoad = function (win) {

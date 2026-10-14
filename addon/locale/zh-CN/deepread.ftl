@@ -101,3 +101,11 @@ deepread-pane-code-header =
     .label = 代码
 deepread-pane-code-sidenav =
     .tooltiptext = 代码
+
+deepread-pref-update-title = 版本与更新
+deepread-pref-update-current =
+    .value = 当前版本
+deepread-pref-update-check =
+    .label = 检查更新
+deepread-pref-update-hint = 插件每天会自动检查一次更新。
+deepread-pref-update-releases = 查看更新日志

@@ -6,6 +6,21 @@
 	</linkset>
 
 	<vbox class="main-section">
+		<!-- Version & updates -->
+		<groupbox aria-labelledby="deepread-pref-update-title">
+			<label><html:h2 id="deepread-pref-update-title" data-l10n-id="deepread-pref-update-title"/></label>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-update-current"/>
+				<label id="deepread-pref-update-version" value=""/>
+				<button id="deepread-pref-update-check" data-l10n-id="deepread-pref-update-check"/>
+				<label id="deepread-pref-update-status" class="deepread-pref-status" value=""/>
+			</hbox>
+			<html:div class="deepread-pref-hint">
+				<html:span data-l10n-id="deepread-pref-update-hint"/>
+				<html:a id="deepread-pref-update-releases" href="#" data-l10n-id="deepread-pref-update-releases"/>
+			</html:div>
+		</groupbox>
+
 		<!-- LLM -->
 		<groupbox aria-labelledby="deepread-pref-llm-title">
 			<label><html:h2 id="deepread-pref-llm-title" data-l10n-id="deepread-pref-llm-title"/></label>

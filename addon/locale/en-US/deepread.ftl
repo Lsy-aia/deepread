@@ -101,3 +101,11 @@ deepread-pane-code-header =
     .label = Code
 deepread-pane-code-sidenav =
     .tooltiptext = Code
+
+deepread-pref-update-title = Version & updates
+deepread-pref-update-current =
+    .value = Current version
+deepread-pref-update-check =
+    .label = Check for updates
+deepread-pref-update-hint = DeepRead checks for updates automatically once a day. 
+deepread-pref-update-releases = Release notes

@@ -97,6 +97,41 @@
     });
   }
 
+  function wireUpdate() {
+    var versionLabel = $("deepread-pref-update-version");
+    var button = $("deepread-pref-update-check");
+    var status = $("deepread-pref-update-status");
+    var releases = $("deepread-pref-update-releases");
+    var deepread = Zotero.DeepRead;
+    if (versionLabel) versionLabel.value = deepread ? deepread.version : "?";
+    if (releases) {
+      releases.addEventListener("click", function (event) {
+        event.preventDefault();
+        Zotero.launchURL((deepread && deepread.Updater && deepread.Updater.RELEASES_URL) || "https://github.com/Lsy-aia/deepread/releases");
+      });
+    }
+    if (!button || !status) return;
+    button.addEventListener("command", async function () {
+      var updater = Zotero.DeepRead && Zotero.DeepRead.Updater;
+      if (!updater) {
+        status.value = "DeepRead is not loaded";
+        status.className = "deepread-pref-status error";
+        return;
+      }
+      button.disabled = true;
+      try {
+        await updater.checkAndInstall(function (state, text) {
+          status.value = text;
+          status.setAttribute("value", text);
+          status.className = "deepread-pref-status" + (state === "ok" ? " ok" : state === "error" ? " error" : "");
+        });
+      }
+      finally {
+        button.disabled = false;
+      }
+    });
+  }
+
   function init() {
     var root = $("deepread-pref-root");
     if (!root || root.dataset.deepreadInit === "1") return;
@@ -123,6 +158,8 @@
     // Menulist value is synced from the pref slightly after load.
     setTimeout(updateProviderVisibility, 0);
     setTimeout(updateProviderVisibility, 300);
+
+    wireUpdate();
 
     wireTest("deepread-pref-llm-test", "deepread-pref-llm-status", function () {
       return Zotero.DeepRead && Zotero.DeepRead.LLM;
