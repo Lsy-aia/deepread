@@ -7,11 +7,18 @@
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "vendor": "node scripts/vendor.mjs",
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "test": "node test/llm.test.mjs && node test/pipeline-smoke.mjs && node test/flashcards.test.mjs && node test/github.test.mjs && node test/deepwiki.test.mjs && node test/textlayer.test.mjs && node test/grobid.test.mjs",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
     "@xmldom/xmldom": "0.9.12",
     "katex": "0.16.47",
     "marked": "18.0.14"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lsy-aia/deepread.git"
+  },
+  "homepage": "https://github.com/Lsy-aia/deepread"
 }

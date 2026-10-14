@@ -23,8 +23,12 @@ DeepRead 是一个免费、开源的 Zotero 插件，支持 Zotero 7–10。它�
 
 ## 安装
 
-1. 下载或自己构建 `deepread-x.y.z.xpi`。构建方法：`npm install && npm run vendor && npm run build`，产物在 `build/` 目录下。
+1. 从 [Releases](https://github.com/Lsy-aia/deepread/releases/latest) 下载最新的 `deepread-x.y.z.xpi`。
 2. 在 Zotero 中打开「工具 → 插件」，点齿轮图标，选「从文件安装附加组件…」，然后选中这个 `.xpi` 文件。
+
+之后会自动更新：Zotero 大约每天检查一次插件更新。想立即更新，可以在「工具 → 插件」里点齿轮，选「检查更新」。
+
+也可以自己构建：`npm install && npm run vendor && npm run build`，产物在 `build/` 目录下。
 
 ## 配置（设置 → DeepRead）
 
@@ -92,7 +96,11 @@ python3 test/build-fixture.py          # 生成离线测试用的 MinerU 夹具
 scripts/e2e.sh test/e2e/basic.js       # 在隔离的无头 Zotero 10 中跑端到端测试（假 MinerU + 假大模型）
 scripts/e2e.sh test/e2e/ui.js          # 设置页 / 工具栏 UI 测试
 npm run build                          # 打包 build/deepread-<version>.xpi
+npm test                               # 全部单元测试（CI 也运行这一组）
+npm run release -- 0.3.2               # 发布新版本：测试 → 打包 → GitHub Release → 更新 update.json
 ```
+
+自动更新：`manifest.json` 中的 `update_url` 指向本仓库 `main` 分支上的 [`update.json`](update.json)。发布脚本会先上传 `.xpi`，再在 `update.json` 里登记这个版本，避免出现指向不存在文件的更新链接。
 
 端到端测试使用 `.test-profile/` 下独立的配置目录和数据目录，不会读写你自己的 Zotero 资料库。
 
