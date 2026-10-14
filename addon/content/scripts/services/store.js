@@ -48,6 +48,14 @@ DeepRead.Store = {
       messages TEXT,
       updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
     )`);
+    await this.db.queryAsync(`CREATE TABLE IF NOT EXISTS translations (
+      attachment_key TEXT NOT NULL,
+      lang TEXT NOT NULL,
+      model TEXT NOT NULL,
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+      PRIMARY KEY (attachment_key, lang, model)
+    )`);
     await this.db.queryAsync(
       "INSERT OR REPLACE INTO version (schema, version) VALUES ('deepread', ?)",
       [this.SCHEMA_VERSION]
@@ -139,6 +147,7 @@ DeepRead.Store = {
   async deletePaper(attachmentKey) {
     await this.db.queryAsync("DELETE FROM papers WHERE attachment_key = ?", [attachmentKey]);
     await this.db.queryAsync("DELETE FROM chats WHERE attachment_key = ?", [attachmentKey]);
+    await this.db.queryAsync("DELETE FROM translations WHERE attachment_key = ?", [attachmentKey]);
     const dir = PathUtils.join(this.resultRoot(), attachmentKey);
     try {
       await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
@@ -146,6 +155,26 @@ DeepRead.Store = {
     catch (e) {
       DeepRead.log("failed to remove result dir", dir, String(e));
     }
+  },
+
+  /** Full-document translation cache: { translations: { [blockId]: text }, failures, unitCount }. */
+  async getTranslation(attachmentKey, lang, model) {
+    const raw = await this.db.valueQueryAsync(
+      "SELECT data FROM translations WHERE attachment_key = ? AND lang = ? AND model = ?", [attachmentKey, lang, model]);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    }
+    catch (e) {
+      return null;
+    }
+  },
+
+  async saveTranslation(attachmentKey, lang, model, data) {
+    await this.db.queryAsync(
+      `INSERT INTO translations (attachment_key, lang, model, data, updated_at) VALUES (?, ?, ?, ?, strftime('%s', 'now'))
+       ON CONFLICT(attachment_key, lang, model) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+      [attachmentKey, lang, model, JSON.stringify(data)]);
   },
 
   async getChat(attachmentKey) {

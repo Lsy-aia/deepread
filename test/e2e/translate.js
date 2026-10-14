@@ -16,6 +16,17 @@ E2E.run = async function () {
     throw new Error(`timeout waiting for ${label}`);
   };
   const DR = await waitFor(() => Zotero.DeepRead, 15000, "plugin");
+  // ReadFlow is optional and off by default: without the switch the engine refuses to run.
+  DR.prefs.set("readflow.enabled", false);
+  let refused = null;
+  try {
+    await DR.ReadFlowLauncher.ensureRunning();
+  }
+  catch (e) {
+    refused = { message: e.message, configError: !!e.configError };
+  }
+  step("disabled", refused);
+  DR.prefs.set("readflow.enabled", true);
   step("connection", await DR.ReadFlow.testConnection());
 
   // A regular parent item so the translation is stored as a sibling attachment.
@@ -44,12 +55,16 @@ E2E.run = async function () {
     fileExists: !!(await dual?.getFilePathAsync()), openedTab: !!Zotero.Reader._readers.find((r) => r.itemID === dual?.id),
     progressTail: progress.slice(-4),
   });
-  if (E2E.env("E2E_TRANSLATE_QUICK") === "1") return { ok: true };
+  if (E2E.env("E2E_TRANSLATE_QUICK") === "1") {
+    DR.prefs.set("readflow.enabled", false);
+    return { ok: true };
+  }
   const inplace = await session.translateDocument("inplace");
   step("inplace", { title: inplace?.getField("title"), existingDual: session.existingTranslation("dual")?.id === dual?.id });
   const dual2 = await session.translateDocument("dual");
   const siblings = Zotero.Items.get(Zotero.Items.get(pdf.parentItemID).getAttachments()).map((a) => a.getField("title"));
   step("replace", { newID: dual2?.id !== dual?.id, oldDeleted: !Zotero.Items.get(dual.id) || Zotero.Items.get(dual.id).deleted, siblings });
   off();
+  DR.prefs.set("readflow.enabled", false);
   return { ok: true };
 };

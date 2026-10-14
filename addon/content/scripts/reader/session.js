@@ -149,6 +149,9 @@
       this.overlay = new DeepRead.Overlay(this);
       this.rail = DeepRead.Rail ? new DeepRead.Rail(this) : null;
       this.editingFlashcard = null;
+      this.parsed = null; // { contentList, markdown, resultDir } from a parse without 精读 results
+      this.fullTranslation = null; // { lang, model, translations: { [blockId]: text }, failures, unitCount }
+      this.translationView = false;
       this.flipped = new Set();
       this.on((event) => {
         if (event === "change" || event === "flashcards") this.rail?.refresh();
@@ -229,8 +232,12 @@
       else {
         this.status = "idle";
       }
+      if (!this.data && stored?.content_list) {
+        this.parsed = { contentList: stored.content_list, markdown: stored.markdown || "", resultDir: stored.result_dir };
+      }
       this.overlay.attach(view);
       if (this.data) this.overlay.setData(this.data.hierarchicalData);
+      await this._loadFullTranslation();
       this.rail?.attach(view);
       this.loadFlashcards().catch((e) => DeepRead.log("loading flashcards failed", String(e)));
       this._emit();
@@ -303,50 +310,191 @@
       return Zotero.Items.get(parent.getAttachments()).find((a) => a.isPDFAttachment() && a.getField("title") === title) || null;
     }
 
-    async translateDocument(mode = DeepRead.prefs.get("readflow.defaultMode") || "dual") {
+    /* ----- built-in engine (default): translate blocks, show in place, export PDF ----- */
+
+    _translationKey() {
+      const cfg = DeepRead.prefs.llmConfig();
+      return { lang: DeepRead.prefs.language(), model: `${cfg.baseURL}|${cfg.model}` };
+    }
+
+    contentList() {
+      return this.data?.contentList || this.parsed?.contentList || null;
+    }
+
+    async _loadFullTranslation() {
+      const { lang, model } = this._translationKey();
+      const cached = await DeepRead.Store.getTranslation(this.key, lang, model);
+      this.fullTranslation = cached ? { lang, model, ...cached } : null;
+      if (this.fullTranslation && this.translationView) this.setTranslationView(true);
+    }
+
+    /** Parse the PDF (without the 精读 LLM step) when no content list is available yet. */
+    async ensureContentList(signal, onStatus = () => {}) {
+      const existing = this.contentList();
+      if (existing?.length) return existing;
+      const filePath = await this.item.getFilePathAsync();
+      if (!filePath) throw new Error(DeepRead.bilingual("找不到 PDF 文件", "PDF file not found"));
+      onStatus(DeepRead.bilingual("解析 PDF 结构…", "Parsing the PDF structure…"));
+      const result = await DeepRead.Parser.parsePDF({
+        filePath, attachmentKey: this.key, signal, pdfApp: this.pdfAdapter(),
+        onStatus: (status) => onStatus(status.message || DeepRead.bilingual("解析 PDF 结构…", "Parsing…")),
+      });
+      this.parsed = { contentList: result.contentList, markdown: result.markdown || "", resultDir: result.resultDir };
+      await DeepRead.Store.savePaper(this.key, this.item.id, {
+        content_list: result.contentList, markdown: result.markdown || "", result_dir: result.resultDir,
+      });
+      return result.contentList;
+    }
+
+    _startJob(engine, message) {
       if (this.translation?.status === "running") {
         this._notify(DeepRead.bilingual("这篇文献正在翻译中", "This document is already being translated"), "warning");
         return null;
       }
+      const controller = new AbortController();
+      this.translation = { status: "running", engine, percent: 1, message, controller };
+      this._emit("translation");
+      return controller;
+    }
+
+    _jobProgress(patch) {
+      this.translation = { ...this.translation, ...patch };
+      this._emit("translation");
+    }
+
+    _jobFailed(controller, error, extra = {}) {
+      const aborted = controller.signal.aborted || error?.name === "AbortError";
+      this.translation = {
+        status: aborted ? "idle" : "error",
+        percent: 0,
+        message: aborted ? DeepRead.t("flow.cancelled") : DeepRead.util.formatError(error),
+        ...extra,
+      };
+      this._emit("translation");
+      if (!aborted) throw error;
+      return null;
+    }
+
+    /** Translate every text block of the paper with the built-in engine and show it in place. */
+    async translateFull() {
+      if (!DeepRead.LLM.isConfigured()) throw Object.assign(new Error(DeepRead.t("error.noLLM")), { configError: true });
+      await this.init();
+      const controller = this._startJob("builtin", DeepRead.bilingual("准备翻译…", "Preparing…"));
+      if (!controller) return null;
+      try {
+        const contentList = await this.ensureContentList(controller.signal, (message) => this._jobProgress({ percent: 5, message }));
+        const units = DeepRead.Translator.buildUnits(contentList);
+        if (!units.length) throw new Error(DeepRead.bilingual("没有可翻译的正文", "Nothing to translate"));
+        const { lang, model } = this._translationKey();
+        const result = await DeepRead.Translator.translateUnits(units, {
+          targetLang: lang,
+          signal: controller.signal,
+          onProgress: ({ done, total }) => this._jobProgress({
+            percent: 10 + Math.round((88 * done) / Math.max(1, total)),
+            message: DeepRead.bilingual(`翻译中（${done}/${total} 段）…`, `Translating (${done}/${total})…`),
+          }),
+        });
+        const data = {
+          translations: Object.fromEntries(result.translations),
+          failures: result.failures || [],
+          unitCount: units.length,
+          createdAt: new Date().toISOString(),
+        };
+        await DeepRead.Store.saveTranslation(this.key, lang, model, data);
+        this.fullTranslation = { lang, model, ...data };
+        const failed = data.failures.length;
+        this.translation = {
+          status: "done", engine: "builtin", percent: 100,
+          message: failed
+            ? DeepRead.bilingual(`翻译完成，${failed} 段未能翻译（保留原文）`, `Done; ${failed} blocks kept in the original`)
+            : DeepRead.bilingual("翻译完成", "Translation finished"),
+        };
+        this.setTranslationView(true);
+        return this.fullTranslation;
+      }
+      catch (error) {
+        return this._jobFailed(controller, error, { engine: "builtin" });
+      }
+    }
+
+    setTranslationView(on) {
+      this.translationView = !!on && !!this.fullTranslation;
+      this.overlay.setTranslationView(this.translationView
+        ? { contentList: this.contentList(), translations: this.fullTranslation.translations }
+        : null);
+      this._emit("translation");
+    }
+
+    /** Build a translated PDF (dual / in-place) from the cached translation and save it as an attachment. */
+    async exportTranslatedPDF(mode = "dual") {
+      if (!this.fullTranslation) throw new Error(DeepRead.bilingual("请先「翻译全文」", "Translate the document first"));
+      if (!DeepRead.PdfExport) throw new Error("PDF export unavailable");
+      const controller = this._startJob("export", DeepRead.bilingual("生成译文 PDF…", "Building the translated PDF…"));
+      if (!controller) return null;
+      try {
+        const font = await DeepRead.PdfExport.findCJKFont();
+        if (!font) {
+          throw Object.assign(new Error(DeepRead.bilingual("没有找到可用的中文字体，请在设置 → DeepRead → 整篇翻译中指定「导出字体」", "No CJK font found; set the export font in settings")), { configError: true });
+        }
+        const filePath = await this.item.getFilePathAsync();
+        const pdfBytes = await IOUtils.read(filePath);
+        const bytes = await DeepRead.PdfExport.build({
+          pdfBytes,
+          contentList: this.contentList(),
+          translations: this.fullTranslation.translations,
+          mode,
+          fontPath: font.path,
+          onProgress: ({ done, total }) => this._jobProgress({
+            percent: Math.round((95 * done) / Math.max(1, total)),
+            message: DeepRead.bilingual(`生成译文 PDF（${done}/${total} 页）…`, `Building PDF (${done}/${total})…`),
+          }),
+        });
+        const attachment = await this._saveTranslation({ pdfBytes: bytes }, mode);
+        this.translation = { status: "done", engine: "export", mode, percent: 100, message: DeepRead.bilingual("译文 PDF 已保存", "Translated PDF saved"), attachmentID: attachment.id };
+        this._emit("translation");
+        await Zotero.Reader.open(attachment.id);
+        return attachment;
+      }
+      catch (error) {
+        return this._jobFailed(controller, error, { engine: "export", mode });
+      }
+    }
+
+    /* ----- optional ReadFlow engine ----- */
+
+    async translateDocument(mode = DeepRead.prefs.get("readflow.defaultMode") || "dual") {
       if (!DeepRead.ReadFlow) throw new Error("ReadFlow client unavailable");
       if (!DeepRead.LLM.isConfigured()) {
         throw Object.assign(new Error(DeepRead.t("error.noLLM")), { configError: true });
       }
       const filePath = await this.item.getFilePathAsync();
       if (!filePath) throw new Error(DeepRead.bilingual("找不到 PDF 文件", "PDF file not found"));
-      const controller = new AbortController();
-      this.translation = { status: "running", mode, percent: 1, message: DeepRead.bilingual("连接 ReadFlow…", "Connecting to ReadFlow…"), controller };
-      this._emit("translation");
+      const controller = this._startJob("readflow", DeepRead.bilingual("连接 ReadFlow…", "Connecting to ReadFlow…"));
+      if (!controller) return null;
+      this._jobProgress({ mode });
       try {
+        await DeepRead.ReadFlowLauncher.ensureRunning((message) => this._jobProgress({ message }));
+        if (controller.signal.aborted) throw new DOMException("cancelled", "AbortError");
         const result = await DeepRead.ReadFlow.translatePDF({
           filePath,
           mode,
           targetLang: DeepRead.prefs.language(),
           signal: controller.signal,
-          onStatus: (status) => {
-            this.translation = { ...this.translation, percent: status.percent ?? this.translation.percent, message: status.message || this.translation.message, jobId: status.jobId || this.translation.jobId };
-            this._emit("translation");
-          },
+          onStatus: (status) => this._jobProgress({
+            percent: status.percent ?? this.translation.percent,
+            message: status.message || this.translation.message,
+            jobId: status.jobId || this.translation.jobId,
+          }),
         });
-        this.translation = { ...this.translation, percent: 99, message: DeepRead.bilingual("保存译文附件…", "Saving the translated PDF…") };
-        this._emit("translation");
+        this._jobProgress({ percent: 99, message: DeepRead.bilingual("保存译文附件…", "Saving the translated PDF…") });
         const attachment = await this._saveTranslation(result, mode);
-        this.translation = { status: "done", mode, percent: 100, message: DeepRead.bilingual("翻译完成", "Translation finished"), attachmentID: attachment.id };
+        this.translation = { status: "done", engine: "readflow", mode, percent: 100, message: DeepRead.bilingual("翻译完成", "Translation finished"), attachmentID: attachment.id };
         this._emit("translation");
         await Zotero.Reader.open(attachment.id);
         return attachment;
       }
       catch (error) {
-        const aborted = controller.signal.aborted || error?.name === "AbortError";
-        this.translation = {
-          status: aborted ? "idle" : "error",
-          mode,
-          percent: 0,
-          message: aborted ? DeepRead.t("flow.cancelled") : DeepRead.util.formatError(error),
-        };
-        this._emit("translation");
-        if (!aborted) throw error;
-        return null;
+        return this._jobFailed(controller, error, { engine: "readflow", mode });
       }
     }
 
@@ -373,7 +521,13 @@
           title: DeepRead.Session.translationTitle(mode),
         });
         // Replace an older translation of the same kind instead of piling up copies.
-        if (old && old.id !== attachment.id) await old.eraseTx();
+        if (old && old.id !== attachment.id) {
+          for (const win of Zotero.getMainWindows()) {
+            const tabID = win.Zotero_Tabs?.getTabIDByItemID?.(old.id);
+            if (tabID) win.Zotero_Tabs.close(tabID);
+          }
+          await old.eraseTx();
+        }
         return attachment;
       }
       finally {
@@ -611,6 +765,9 @@
       this.status = "idle";
       this.progress = { percent: 0, message: "" };
       this.overlay.setData([]);
+      this.parsed = null;
+      this.fullTranslation = null; // deletePaper also drops the cached translations
+      this.setTranslationView(false);
       this._emit();
     }
 

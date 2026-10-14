@@ -24,6 +24,7 @@
 .deepread-menu button:hover { background: var(--fill-quinary, rgba(0,0,0,0.06)); }
 .deepread-menu .dr-check { width: 14px; display: inline-block; }
 .deepread-menu hr { border: none; border-top: 1px solid rgba(0,0,0,0.1); margin: 4px 2px; }
+.deepread-menu .dr-menu-heading { padding: 4px 8px 2px; font-size: 11px; opacity: 0.6; }
 .deepread-toast { position: fixed; right: 16px; bottom: 16px; z-index: 2147483002; max-width: 380px; padding: 9px 12px;
   border-radius: 8px; background: #1f2328; color: #fff; font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, sans-serif;
   box-shadow: 0 6px 20px rgba(0,0,0,0.25); white-space: pre-wrap; }
@@ -143,7 +144,6 @@
 
   function openTranslateMenu(session, doc, anchor) {
     doc.querySelector(".deepread-menu")?.remove();
-    const defaultMode = DeepRead.prefs.get("readflow.defaultMode") === "inplace" ? "inplace" : "dual";
     const close = () => {
       menu.remove();
       doc.removeEventListener("pointerdown", outside, true);
@@ -151,33 +151,74 @@
     const outside = (e) => {
       if (!menu.contains(e.target)) close();
     };
-    const item = (label, action, marked = false) => h(doc, "button", {
+    const item = (label, action, marked = "") => h(doc, "button", {
       onclick: (e) => {
         e.stopPropagation();
         close();
         action();
       },
-    }, h(doc, "span", { class: "dr-check" }, marked ? "•" : ""), label);
-    const start = (mode) => session.translateDocument(mode)
-      .then((attachment) => attachment && DeepRead.Toast.show(doc, DeepRead.bilingual("译文已保存为附件并打开", "Translated PDF saved and opened")))
-      .catch((error) => {
-        DeepRead.Toast.show(doc, DeepRead.util.formatError(error), "error");
-        if (error?.configError) DeepRead.openPreferences();
-      });
-    const entries = [];
-    for (const mode of ["dual", "inplace"]) {
-      const label = mode === "dual"
-        ? DeepRead.bilingual("整篇翻译 · 双栏对照（左原文·右译文）", "Translate · side by side")
-        : DeepRead.bilingual("整篇翻译 · 原位译文（保留排版）", "Translate · in place");
-      entries.push(item(label, () => start(mode), mode === defaultMode));
-      const existing = session.existingTranslation(mode);
-      if (existing) {
-        entries.push(item(DeepRead.bilingual(`打开已有${DeepRead.Session.translationTitle(mode)}`, `Open existing ${DeepRead.Session.translationTitle(mode)}`),
-          () => Zotero.Reader.open(existing.id)));
+    }, h(doc, "span", { class: "dr-check" }, marked), label);
+    const heading = (text) => h(doc, "div", { class: "dr-menu-heading" }, text);
+    const fail = (error) => {
+      DeepRead.Toast.show(doc, DeepRead.util.formatError(error), "error");
+      if (error?.configError) DeepRead.openPreferences();
+    };
+    const modeLabel = (mode) => (mode === "dual"
+      ? DeepRead.bilingual("双栏对照（左原文·右译文）", "side by side")
+      : DeepRead.bilingual("原位译文（保留排版）", "in place"));
+
+    // Built-in engine: translate the parsed blocks with the DeepRead model, overlay in place, export PDF.
+    const builtin = [heading(DeepRead.bilingual("内置翻译（DeepRead 模型）", "Built-in (DeepRead model)"))];
+    const done = !!session.fullTranslation;
+    const translateAll = () => session.translateFull()
+      .then((result) => result && DeepRead.Toast.show(doc, session.translation?.message || DeepRead.bilingual("翻译完成", "Done")))
+      .catch(fail);
+    if (!done) {
+      builtin.push(item(DeepRead.bilingual("翻译全文（在原文上显示译文）", "Translate the document"), translateAll));
+    }
+    else {
+      builtin.push(item(DeepRead.bilingual("显示译文", "Show translation"), () => session.setTranslationView(!session.translationView), session.translationView ? "✓" : ""));
+      for (const mode of ["dual", "inplace"]) {
+        builtin.push(item(DeepRead.bilingual(`导出 PDF · ${modeLabel(mode)}`, `Export PDF · ${modeLabel(mode)}`), () => session.exportTranslatedPDF(mode)
+          .then((attachment) => attachment && DeepRead.Toast.show(doc, DeepRead.bilingual("译文 PDF 已保存为附件并打开", "Translated PDF saved and opened")))
+          .catch(fail)));
+      }
+      builtin.push(item(DeepRead.bilingual("重新翻译全文", "Translate again"), () => {
+        if (confirm(session.reader, DeepRead.bilingual("重新翻译会覆盖已有译文，继续？", "Replace the existing translation?"))) translateAll();
+      }));
+    }
+
+    // Optional ReadFlow engine: only when enabled in settings.
+    const readflow = [];
+    if (DeepRead.ReadFlowLauncher?.enabled && DeepRead.ReadFlow) {
+      const defaultMode = DeepRead.prefs.get("readflow.defaultMode") === "inplace" ? "inplace" : "dual";
+      readflow.push(heading(DeepRead.bilingual("ReadFlow 引擎", "ReadFlow engine")));
+      for (const mode of ["dual", "inplace"]) {
+        readflow.push(item(`ReadFlow · ${modeLabel(mode)}`, () => session.translateDocument(mode)
+          .then((attachment) => attachment && DeepRead.Toast.show(doc, DeepRead.bilingual("译文已保存为附件并打开", "Translated PDF saved and opened")))
+          .catch(fail), mode === defaultMode ? "•" : ""));
       }
     }
+
+    const existing = [];
+    for (const mode of ["dual", "inplace"]) {
+      const attachment = session.existingTranslation(mode);
+      if (attachment) {
+        existing.push(item(DeepRead.bilingual(`打开已有${DeepRead.Session.translationTitle(mode)}`, `Open existing ${DeepRead.Session.translationTitle(mode)}`),
+          () => Zotero.Reader.open(attachment.id)));
+      }
+    }
+
+    const sections = DeepRead.prefs.get("translate.engine") === "readflow" && readflow.length
+      ? [readflow, builtin, existing]
+      : [builtin, readflow, existing];
+    const entries = [];
+    for (const section of sections.filter((list) => list.length)) {
+      if (entries.length) entries.push(h(doc, "hr"));
+      entries.push(...section);
+    }
     const menu = h(doc, "div", { class: "deepread-menu" }, ...entries, h(doc, "hr"),
-      item(DeepRead.bilingual("ReadFlow 与翻译设置…", "ReadFlow & translation settings…"), () => DeepRead.openPreferences()));
+      item(DeepRead.bilingual("翻译设置…", "Translation settings…"), () => DeepRead.openPreferences()));
     (doc.body || doc.documentElement).append(menu);
     const r = anchor.getBoundingClientRect();
     menu.style.left = `${Math.max(4, Math.min(r.left, doc.documentElement.clientWidth - menu.offsetWidth - 4))}px`;
@@ -221,7 +262,8 @@
         : DeepRead.bilingual("整篇翻译", "Translate");
       translateButton.title = running
         ? `${job.message || ""}\n${DeepRead.bilingual("点击取消", "Click to cancel")}`
-        : (job?.status === "error" ? job.message : DeepRead.bilingual("用 ReadFlow 生成保留排版的整篇译文", "Full, layout-preserving translation via ReadFlow"));
+        : (job?.status === "error" ? job.message : DeepRead.bilingual("整篇翻译：在原文上显示译文，可导出译文 PDF", "Translate the whole document; export a translated PDF"));
+      translateButton.classList.toggle("dr-ready", !!session.translationView && !running);
       translateProgress.style.width = running ? `${Math.max(2, job.percent || 0)}%` : "0";
     };
 

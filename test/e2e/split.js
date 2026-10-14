@@ -41,7 +41,9 @@ E2E.run = async function () {
     .find((i) => i.isPDFAttachment() && !i.deleted && i.attachmentFilename === name);
   if (!item) item = await Zotero.Attachments.importFromFile({ file: Zotero.File.pathToFile(pdfPath), libraryID: Zotero.Libraries.userLibraryID });
 
-  const reader = await Zotero.Reader.open(item.id);
+  // open() returns nothing when the tab is already open (restored session): look the reader up instead.
+  await Zotero.Reader.open(item.id);
+  const reader = await waitFor(() => Zotero.Reader._readers.find((r) => r.itemID === item.id), 10000, "reader");
   await reader._initPromise;
   const session = DR.Session.forReader(reader);
   await session.init();

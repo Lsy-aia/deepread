@@ -28,6 +28,12 @@
 .deepread-layer .dr-rect { position: absolute; border-radius: 2px; mix-blend-mode: multiply; }
 .deepread-layer .dr-outline { position: absolute; border-radius: 4px;
   box-shadow: 0 0 0 1.5px rgba(251, 191, 36, 0.85); background: rgba(251, 191, 36, 0.06); }
+.deepread-layer .dr-tbox { position: absolute; overflow: hidden; box-sizing: border-box; padding: 1px 2px;
+  background: #fffef8; color: #1f2328; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,0.05);
+  font-family: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", serif; line-height: 1.38;
+  text-align: justify; white-space: pre-wrap; word-break: break-word; }
+.deepread-layer .dr-tbox.dr-title { font-weight: 700; text-align: left; }
+:root[data-color-scheme="dark"] .deepread-layer .dr-tbox { background: #22252a; color: #e6e6e6; }
 .deepread-layer .dr-translation { position: absolute; overflow: hidden; box-sizing: border-box;
   padding: 2px 3px; border-radius: 3px; background: #fffef8; color: #1f2328;
   box-shadow: 0 0 0 1px rgba(0,0,0,0.08), 0 2px 10px rgba(0,0,0,0.12);
@@ -199,6 +205,56 @@
       this.attached = false;
     }
 
+    /**
+     * Persistent in-place translation of whole blocks ("译文视图").
+     * view = { contentList, translations: { [id]: text } } or null to show the original.
+     */
+    setTranslationView(view) {
+      this.tview = null;
+      if (view?.contentList && view.translations) {
+        const byPage = new Map();
+        for (const item of view.contentList) {
+          const text = view.translations[item.id];
+          if (!text || !Array.isArray(item.bbox)) continue;
+          if (!byPage.has(item.page_idx)) byPage.set(item.page_idx, []);
+          byPage.get(item.page_idx).push({ bbox: item.bbox, text, title: item.text_level === 1 });
+        }
+        this.tview = byPage;
+      }
+      this.renderAllPages();
+    }
+
+    /** PDF rect of a per-mille (top-left origin) bbox on a page. */
+    _permilleRect(pageIndex, bbox) {
+      const pageView = this.app?.pdfViewer?.getPageView(pageIndex);
+      const view = pageView?.pdfPage?.view ? Array.from(pageView.pdfPage.view) : null;
+      if (!view) return null;
+      const w = view[2] - view[0];
+      const h = view[3] - view[1];
+      return [view[0] + (bbox[0] / 1000) * w, view[3] - (bbox[3] / 1000) * h, view[0] + (bbox[2] / 1000) * w, view[3] - (bbox[1] / 1000) * h];
+    }
+
+    _renderTranslationView(ctx, pageIndex) {
+      ctx.tview.replaceChildren();
+      const blocks = this.tview?.get(pageIndex);
+      if (!blocks?.length) return;
+      const scale = Math.hypot(ctx.geom.t[0], ctx.geom.t[1]) * (ctx.geom.div.clientWidth / ctx.geom.w);
+      for (const block of blocks) {
+        const rect = this._permilleRect(pageIndex, block.bbox);
+        if (!rect) continue;
+        const box = this._addRect(ctx.tview, ctx.geom, [rect[0] - 1, rect[1] - 1, rect[2] + 1, rect[3] + 1], block.title ? "dr-tbox dr-title" : "dr-tbox");
+        box.textContent = block.text;
+        // Start near typical body size (~10 pt) and shrink until the text fits its block.
+        let size = Math.max(6, (block.title ? 13 : 10) * scale);
+        const height = box.clientHeight;
+        for (let i = 0; i < 16 && size > 5; i++) {
+          box.style.fontSize = `${size}px`;
+          if (box.scrollHeight <= height + 1) break;
+          size *= 0.9;
+        }
+      }
+    }
+
     setData(hierarchicalData) {
       this.pages = new Map();
       for (const page of hierarchicalData || []) {
@@ -298,10 +354,15 @@
       let layer = geom.div.querySelector(":scope > .deepread-layer");
       if (!layer) {
         layer = el(this.pdfDoc, "div", "deepread-layer");
-        layer.append(el(this.pdfDoc, "div", "dr-persistent"), el(this.pdfDoc, "div", "dr-transient"));
+        layer.append(el(this.pdfDoc, "div", "dr-persistent"), el(this.pdfDoc, "div", "dr-tview"), el(this.pdfDoc, "div", "dr-transient"));
         geom.div.append(layer);
       }
-      return { layer, geom, persistent: layer.firstChild, transient: layer.lastChild };
+      return {
+        layer, geom,
+        persistent: layer.querySelector(":scope > .dr-persistent"),
+        tview: layer.querySelector(":scope > .dr-tview"),
+        transient: layer.querySelector(":scope > .dr-transient"),
+      };
     }
 
     _addRect(container, geom, rect, cls, color) {
@@ -317,15 +378,16 @@
     }
 
     _renderPage(pageIndex) {
-      const paragraphs = this.pages.get(pageIndex);
+      const paragraphs = this.pages.get(pageIndex) || [];
       const geom = this._geometry(pageIndex);
       if (!geom) return;
-      if (!paragraphs?.length) {
+      if (!paragraphs.length && !this.tview?.get(pageIndex)?.length) {
         geom.div.querySelector(":scope > .deepread-layer")?.remove();
         return;
       }
       const ctx = this._layer(pageIndex);
       if (!ctx) return;
+      this._renderTranslationView(ctx, pageIndex);
       ctx.persistent.replaceChildren();
       if (this.options.highlights) {
         for (const paragraph of paragraphs) {

@@ -78,8 +78,27 @@ deepread-pref-parser-selfhost-url = 服务地址
 deepread-pref-parser-selfhost-token = Token（可选）
 deepread-pref-parser-selfhost-backend = 后端
 
-deepread-pref-readflow-title = 整篇翻译（ReadFlow）
-deepread-pref-readflow-hint = 通过本机的 ReadFlow 服务生成保留排版的整篇译文 PDF，并保存为条目附件。翻译使用上方「大模型」的设置。使用前请先打开 ReadFlow（或部署其后端服务）。
+deepread-pref-translate-title = 整篇翻译
+deepread-pref-translate-hint = 在 Zotero 内直接翻译整篇论文：译文可在阅读器中原位显示（「译文视图」），也可导出为双栏对照或原位译文 PDF。不需要安装其他软件，翻译使用上方「大模型」的设置。
+deepread-pref-translate-engine = 翻译引擎
+deepread-pref-translate-engine-builtin =
+    .label = 内置（轻量，推荐）
+deepread-pref-translate-engine-readflow =
+    .label = ReadFlow（需安装并启用，见下方）
+deepread-pref-translate-fontpath = 导出字体
+deepread-pref-translate-fontpath-input =
+    .placeholder = 留空自动查找系统中文字体
+deepread-pref-translate-fontpath-hint = 导出 PDF 时用于显示译文的字体，需为 TrueType 字形的 .ttf 或 .ttc（如微软雅黑、文泉驿）。Noto Sans CJK 等 CFF 字体无法嵌入。
+
+deepread-pref-readflow-title = ReadFlow 引擎（可选）
+deepread-pref-readflow-enabled =
+    .label = 启用 ReadFlow 引擎
+deepread-pref-readflow-autostart =
+    .label = 需要时自动启动 ReadFlow
+deepread-pref-readflow-apppath = 程序路径
+deepread-pref-readflow-apppath-input =
+    .placeholder = 留空自动查找（如 /opt/ReadFlow/readflow）
+deepread-pref-readflow-hint = 已安装 ReadFlow 时可选用：由 ReadFlow 完成识别、翻译和排版，生成保留排版的译文 PDF。未启用时不会连接 ReadFlow。
 deepread-pref-readflow-baseurl = 服务地址
 deepread-pref-readflow-apikey = API Key
 deepread-pref-readflow-apikey-hint = ReadFlow 桌面版默认是 retain-pdf-desktop；自行部署的服务填写你设置的 Key。
@@ -106,7 +125,7 @@ deepread-pref-view-translation =
 deepread-pref-chat-maxcontext = 对话最大上下文字符数
 
 deepread-pref-privacy-title = 隐私
-deepread-pref-privacy-note = API Key 保存在本机的 Zotero 设置中；PDF 内容只会发送到您在此处配置的服务。使用整篇翻译时，大模型 Key 会登记到本机 ReadFlow 的密钥库（名称 deepread-llm），由 ReadFlow 调用模型。
+deepread-pref-privacy-note = API Key 保存在本机的 Zotero 设置中；PDF 内容只会发送到您在此处配置的服务。内置整篇翻译直接调用上方的大模型；只有启用并使用 ReadFlow 引擎时，大模型 Key 才会登记到本机 ReadFlow 的密钥库（名称 deepread-llm），由 ReadFlow 调用模型。
 
 deepread-pane-flashcards-header =
     .label = 闪卡
