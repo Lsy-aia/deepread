@@ -43,6 +43,9 @@
 .deepread-menu .dr-feature-text { display: flex; flex-direction: column; gap: 1px; }
 .deepread-menu .dr-feature-text strong { font-weight: 600; }
 .deepread-menu .dr-feature-text small { font-size: 11.5px; opacity: 0.7; }
+.deepread-menu .dr-hl-row input[type="color"] { width: 22px; height: 22px; padding: 0; border: 1px solid rgba(0,0,0,0.2);
+  border-radius: 5px; background: none; cursor: pointer; }
+.deepread-menu .dr-fold-row button[aria-pressed="true"] { background: #e3eafa; border-color: #2b59c3; color: #1e428f; }
 .deepread-toast { position: fixed; right: 16px; bottom: 16px; z-index: 2147483002; max-width: 380px; padding: 9px 12px;
   border-radius: 8px; background: #1f2328; color: #fff; font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, sans-serif;
   box-shadow: 0 6px 20px rgba(0,0,0,0.25); white-space: pre-wrap; }
@@ -107,7 +110,20 @@
     if (!session.hasResults || !DeepRead.Explainer) return null;
     const missing = session.missingExplanations().length;
     const running = session.explaining.size;
-    if (!missing && !running) return null;
+    if (!missing && !running) {
+      // Everything explained: offer a fresh pass (e.g. to merge related paragraphs into one card).
+      if (!Object.keys(session.explanations || {}).length) return null;
+      const keys = (session.data?.hierarchicalData || []).flatMap((page) => (page.paragraphs || [])
+        .filter((p) => DeepRead.Explainer.eligible(p)).map((p) => DeepRead.Explainer.key(page.pageIndex, p.paragraphIndex)));
+      const label = DeepRead.prefs.get("cards.groupParagraphs") !== false
+        ? DeepRead.bilingual("重新生成全部 AI 讲解（合并相关段落）", "Rewrite all explanations (merging related paragraphs)")
+        : DeepRead.bilingual("重新生成全部 AI 讲解", "Rewrite all explanations");
+      return item([h(doc, "span", { class: "dr-check" }), label], () => {
+        session.explainAll({ only: keys })
+          .then((count) => DeepRead.Toast.show(doc, DeepRead.bilingual(`已生成 ${count} 段 AI 讲解`, `${count} explanations written`)))
+          .catch((error) => DeepRead.Toast.show(doc, DeepRead.util.formatError(error), "error"));
+      });
+    }
     const label = running
       ? DeepRead.bilingual(`AI 讲解生成中（${running} 段）…`, `Writing explanations (${running})…`)
       : DeepRead.bilingual(`生成 AI 讲解（${missing} 段）`, `Explain paragraphs (${missing})`);
@@ -209,6 +225,66 @@
     h(doc, "span", { class: "dr-feature-text" }, h(doc, "strong", {}, DeepRead.bilingual("双栏论文两侧放卡片", "Cards on both sides for two columns")),
       h(doc, "small", {}, DeepRead.bilingual("关闭后卡片都放在右侧", "Off: all cards on the right"))));
     const layout = h(doc, "div", {}, layoutRow());
+    // Opened cards stay open until closed (global).
+    const keepOpenRow = () => {
+      const on = DeepRead.prefs.get("cards.keepOpen") !== false;
+      return h(doc, "button", {
+        class: "dr-feature dr-keepopen",
+        role: "menuitemcheckbox",
+        "aria-checked": String(on),
+        onclick: (e) => {
+          e.stopPropagation();
+          DeepRead.prefs.set("cards.keepOpen", !on);
+          keepOpen.replaceChildren(keepOpenRow());
+        },
+      }, h(doc, "span", { class: "dr-box", "aria-hidden": "true" }, on ? "✓" : ""),
+      h(doc, "span", { class: "dr-feature-text" }, h(doc, "strong", {}, DeepRead.bilingual("卡片保持展开", "Keep opened cards open")),
+        h(doc, "small", {}, DeepRead.bilingual("点别处不会自动收起，单击卡片标题收起", "Clicking elsewhere does not fold them; click a card's title to fold"))));
+    };
+    const keepOpen = h(doc, "div", {}, keepOpenRow());
+    // Highlighter: one swatch per click step (colour 1, colour 2, …, then cleared).
+    const highlightRow = () => {
+      const colors = DeepRead.prefs.highlightColors();
+      const save = (list) => {
+        DeepRead.prefs.setHighlightColors(list);
+        highlight.replaceChildren(highlightRow());
+      };
+      const swatches = colors.map((color, i) => {
+        const input = h(doc, "input", { type: "color", value: color, title: DeepRead.bilingual(`第 ${i + 1} 次点击`, `Click ${i + 1}`) });
+        input.addEventListener("click", (e) => e.stopPropagation());
+        input.addEventListener("change", () => save(colors.map((c, j) => (j === i ? input.value : c))));
+        return input;
+      });
+      const palette = ["#22c55e", "#f59e0b", "#a855f7", "#ec4899", "#14b8a6", "#6366f1"];
+      const step = (delta) => (e) => {
+        e.stopPropagation();
+        if (delta > 0) save([...colors, palette.find((c) => !colors.includes(c)) || "#22c55e"]);
+        else if (colors.length > 1) save(colors.slice(0, -1));
+      };
+      return h(doc, "div", { class: "dr-menu-row dr-hl-row", title: DeepRead.bilingual("点击要点依次换成这些颜色，再点一次清除", "Clicking a key point steps through these colours; one more click clears it") },
+        h(doc, "span", { class: "dr-label" }, DeepRead.bilingual("荧光笔", "Highlighter")), ...swatches,
+        h(doc, "button", { onclick: step(-1), title: "−", disabled: colors.length <= 1 }, "−"),
+        h(doc, "button", { onclick: step(1), title: "+", disabled: colors.length >= 6 }, "+"));
+    };
+    const highlight = h(doc, "div", {}, highlightRow());
+    // Fold the card rails away, e.g. while the AI chat pane takes the right side.
+    const foldRow = () => {
+      const button = (side, label) => {
+        const pref = DeepRead.Rail.collapsePref(side);
+        const folded = DeepRead.prefs.get(pref) === true;
+        return h(doc, "button", {
+          "aria-pressed": String(folded),
+          onclick: (e) => {
+            e.stopPropagation();
+            DeepRead.prefs.set(pref, !folded);
+            fold.replaceChildren(foldRow());
+          },
+        }, label);
+      };
+      return h(doc, "div", { class: "dr-menu-row dr-fold-row" }, h(doc, "span", { class: "dr-label" }, DeepRead.bilingual("收起卡片栏", "Fold card rail")),
+        button("left", DeepRead.bilingual("左", "Left")), button("right", DeepRead.bilingual("右", "Right")));
+    };
+    const fold = h(doc, "div", {}, foldRow());
 
     const menu = h(doc, "div", { class: "deepread-menu dr-features", role: "menu", "aria-label": DeepRead.bilingual("本文显示的功能", "Features for this paper") },
       h(doc, "div", { class: "dr-menu-head" }, h(doc, "strong", {}, DeepRead.bilingual("本文显示的功能", "Features")), scopeBox),
@@ -217,9 +293,16 @@
       sizeRow(doc, DeepRead.bilingual("卡片字号", "Card font"), "view.cardFontSize", 1, DeepRead.Rail.clampFont, (v) => `${v} px`),
       sizeRow(doc, DeepRead.bilingual("卡片宽度", "Card width"), "view.railWidth", 20, DeepRead.Rail.clampWidth, (v) => `${v} px`),
       layout,
+      keepOpen,
+      highlight,
+      fold,
       h(doc, "hr"),
       item(plain(session.hasResults ? DeepRead.t("toolbar.rerun") : DeepRead.t("toolbar.run")), () => onRun(session, doc)),
       explainItem(session, doc, item),
+      session.rail?.openCount
+        ? item(plain(DeepRead.bilingual(`收起所有展开的卡片（${session.rail.openCount}）`, `Fold all open cards (${session.rail.openCount})`)),
+          () => session.rail.collapseAll())
+        : null,
       session.hiddenCardCount
         ? item(plain(DeepRead.bilingual(`显示已隐藏的卡片（${session.hiddenCardCount}）`, `Show hidden cards (${session.hiddenCardCount})`)),
           () => session.showHiddenCards())

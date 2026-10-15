@@ -16,10 +16,9 @@
 
 (function () {
   const HTML_NS = "http://www.w3.org/1999/xhtml";
-  const LEVEL_COLORS = {
-    2: "rgba(96, 175, 255, 0.28)", // important (blue)
-    3: "rgba(239, 68, 68, 0.24)", // critical (red)
-  };
+  const HIGHLIGHT_ALPHA = 0.28; // highlighter colours (session.levelColor) drawn over the PDF text
+  const FIT_MIN = 0.55; // translation panel font scale range when fitting it to the paragraph's box
+  const FIT_MAX = 1.6;
   const HOVER_POINT_COLOR = "rgba(251, 191, 36, 0.32)";
   const SHOW_DELAY = 140;
   const HIDE_DELAY = 280;
@@ -60,8 +59,8 @@
 .deepread-card li { position: relative; padding: 5px 6px 5px 16px; border-radius: 6px; cursor: pointer; }
 .deepread-card li::before { content: ""; position: absolute; left: 6px; top: 12px; width: 5px; height: 5px;
   border-radius: 50%; background: #8c959f; }
-.deepread-card li[data-level="2"]::before { background: #3b82f6; }
-.deepread-card li[data-level="3"]::before { background: #ef4444; }
+.deepread-card li.dr-hl::before { background: var(--dr-hl); }
+.deepread-card li.dr-hl { background: color-mix(in srgb, var(--dr-hl) 16%, transparent); }
 .deepread-card li:hover { background: rgba(251, 191, 36, 0.16); }
 .deepread-card .dr-point-summary { font-weight: 500; }
 .deepread-card { font-size: var(--dr-card-font, 13px); }
@@ -82,6 +81,11 @@
 :root[data-color-scheme="dark"] .deepread-card .dr-actions button:hover { background: rgba(255,255,255,0.08); color: #fff; }
 :root[data-color-scheme="dark"] .deepread-card .dr-point-translation { color: #c5c9cf; }
 `;
+
+  function rgba(hex, alpha) {
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || "");
+    return m ? `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})` : "";
+  }
 
   function apply(t, x, y) {
     return [t[0] * x + t[2] * y + t[4], t[1] * x + t[3] * y + t[5]];
@@ -152,6 +156,7 @@
       this.trPara = null; // hovered paragraph currently shown as its translation
       this._suppressPara = null; // pressed/selected paragraph: show the original until the pointer leaves it
       this._trContent = new WeakMap(); // paragraph → rendered translation (DocumentFragment)
+      this._trFit = new WeakMap(); // paragraph → { [page width]: font scale that fills the paragraph box }
       this.altDown = false;
       this._timers = {};
       this._cleanup = [];
@@ -389,10 +394,10 @@
       if (this.options.highlights) {
         for (const paragraph of paragraphs) {
           for (const point of paragraph.points || []) {
-            const level = this.session.pointLevel(point);
-            if (level < 2) continue;
+            const color = rgba(this.session.levelColor(this.session.pointLevel(point)), HIGHLIGHT_ALPHA);
+            if (!color) continue;
             for (const rect of point.rects || []) {
-              this._addRect(ctx.persistent, ctx.geom, rect, "dr-rect", LEVEL_COLORS[level]);
+              this._addRect(ctx.persistent, ctx.geom, rect, "dr-rect", color);
             }
           }
         }
@@ -426,6 +431,41 @@
       const pad = 2;
       const [x1, y1, x2, y2] = paragraph.bbox;
       this._addRect(ctx.transient, ctx.geom, [x1 - pad, y1 - pad, x2 + pad, y2 + pad], "dr-outline");
+    }
+
+    /** Outline every paragraph of a merged card (hovering the card). */
+    outlineParagraphs(paragraphs) {
+      this._clearTransient();
+      const pad = 2;
+      for (const paragraph of paragraphs || []) {
+        const ctx = paragraph?.bbox && this._layer(paragraph.pageIndex);
+        if (!ctx) continue;
+        const [x1, y1, x2, y2] = paragraph.bbox;
+        this._addRect(ctx.transient, ctx.geom, [x1 - pad, y1 - pad, x2 + pad, y2 + pad], "dr-outline");
+      }
+    }
+
+    /** A page is two-column when it has narrow body-text blocks on both halves. */
+    isTwoColumn(pageIndex) {
+      if (this._columnsFor !== this.pages) {
+        this._columnsFor = this.pages;
+        this._columns = new Map();
+      }
+      if (!this._columns.has(pageIndex)) {
+        const geom = this._geometry(pageIndex);
+        if (!geom) return false;
+        let left = 0;
+        let right = 0;
+        for (const paragraph of this.pages.get(pageIndex) || []) {
+          if (!String(paragraph.paragraphType || "text").startsWith("text") || !paragraph.bbox) continue;
+          const pct = this._toPercent(geom, paragraph.bbox);
+          if (pct.width > 60) continue;
+          if (pct.left + pct.width / 2 < 50) left++;
+          else right++;
+        }
+        this._columns.set(pageIndex, left > 0 && right > 0);
+      }
+      return this._columns.get(pageIndex);
     }
 
     _translationAllowed(paragraph) {
@@ -492,9 +532,10 @@
     }
 
     /**
-     * Shows the translation in a panel right below the paragraph (above it when the page has no room
-     * below), as wide as the paragraph and typeset with the original's font size, line pitch and indent,
-     * so the original stays readable.
+     * Shows the translation in a panel the size of the paragraph, so the original stays readable:
+     * on a two-column page beside it in the other column (left column → right, right column → left),
+     * otherwise right below it (above when the page has no room below). The font is scaled so the
+     * translation fills the paragraph's box; line pitch and indent keep the original's proportions.
      */
     _drawTranslation(ctx, paragraph) {
       const text = this._paragraphTranslation(paragraph);
@@ -506,25 +547,69 @@
       const gapPct = (4 / pageH) * 100;
       const title = paragraph.paragraphType === "title";
       const box = el(this.pdfDoc, "div", title ? "dr-translation dr-title" : "dr-translation");
-      box.style.left = `${pct.left}%`;
       box.style.width = `${pct.width}%`;
-      box.style.fontSize = `${metrics.fontSize}px`;
-      box.style.lineHeight = `${metrics.lineHeight}px`;
       box.style.textIndent = `${metrics.indent}px`;
       box.append(this._translationContent(paragraph, text));
-      // Measure below first, then flip above if it does not fit on the page.
-      box.style.top = `${pct.top + pct.height + gapPct}%`;
+      box.style.visibility = "hidden";
+      box.style.top = "0";
+      box.style.left = `${pct.left}%`;
       ctx.transient.append(box);
-      const height = box.offsetHeight;
-      const spaceBelow = pageH * (1 - (pct.top + pct.height + gapPct) / 100);
-      const spaceAbove = pageH * ((pct.top - gapPct) / 100);
-      if (height > spaceBelow && spaceAbove > spaceBelow) {
-        box.style.top = "";
-        box.style.bottom = `${100 - pct.top + gapPct}%`;
-        box.dataset.side = "above";
+
+      // Fit: the largest font (within FIT_MIN–FIT_MAX of the original) whose text fits the paragraph's height.
+      const target = Math.max(metrics.lineHeight, (pct.height / 100) * pageH);
+      const ratio = metrics.lineHeight / metrics.fontSize || 1.2;
+      const setScale = (k) => {
+        box.style.fontSize = `${metrics.fontSize * k}px`;
+        box.style.lineHeight = `${metrics.fontSize * k * ratio}px`;
+      };
+      const fits = (k) => {
+        setScale(k);
+        return box.clientHeight - 6 <= target + 1; // 6 = vertical padding
+      };
+      const cacheKey = `${geom.div.clientWidth}`;
+      let scale = this._trFit.get(paragraph)?.[cacheKey];
+      if (!scale) {
+        let lo = FIT_MIN;
+        let hi = FIT_MAX;
+        if (fits(hi)) lo = hi;
+        else if (!fits(lo)) hi = lo;
+        for (let i = 0; i < 8 && hi - lo > 0.01; i++) {
+          const mid = (lo + hi) / 2;
+          if (fits(mid)) lo = mid;
+          else hi = mid;
+        }
+        scale = lo;
+        this._trFit.set(paragraph, { ...(this._trFit.get(paragraph) || {}), [cacheKey]: scale });
       }
-      else box.dataset.side = "below";
-      box.dataset.fontSize = metrics.fontSize.toFixed(2);
+      setScale(scale);
+      box.style.minHeight = `${target}px`;
+
+      let side;
+      if (pct.width <= 60 && this.isTwoColumn(paragraph.pageIndex)) {
+        // Mirror into the other column at the same height.
+        side = pct.left + pct.width / 2 < 50 ? "right" : "left";
+        box.style.left = `${100 - pct.left - pct.width}%`;
+        box.style.top = `${pct.top}%`;
+      }
+      else {
+        box.style.left = `${pct.left}%`;
+        const height = box.offsetHeight;
+        const spaceBelow = pageH * (1 - (pct.top + pct.height + gapPct) / 100);
+        const spaceAbove = pageH * ((pct.top - gapPct) / 100);
+        if (height > spaceBelow && spaceAbove > spaceBelow) {
+          side = "above";
+          box.style.top = "";
+          box.style.bottom = `${100 - pct.top + gapPct}%`;
+        }
+        else {
+          side = "below";
+          box.style.top = `${pct.top + pct.height + gapPct}%`;
+        }
+      }
+      box.dataset.side = side;
+      box.dataset.fontSize = (metrics.fontSize * scale).toFixed(2);
+      box.dataset.scale = scale.toFixed(2);
+      box.style.visibility = "";
       // Outline the paragraph the panel belongs to.
       const pad = 2;
       const [x1, y1, x2, y2] = paragraph.bbox;
@@ -658,7 +743,7 @@
       this.hoverPara = paragraph;
       this._showCard(paragraph);
       this.cardPinned = true;
-      const key = `p_${paragraph.pageIndex}_${paragraph.paragraphIndex}`;
+      const key = this.session.groupLead(`p_${paragraph.pageIndex}_${paragraph.paragraphIndex}`);
       if (DeepRead.prefs.get("cards.autoExplain") !== false && !this.session.explanation(key)
           && DeepRead.Explainer?.eligible(paragraph) && DeepRead.LLM.isConfigured()) {
         const refresh = () => {
@@ -742,7 +827,8 @@
       card.style.setProperty("--dr-card-font", `${DeepRead.Rail.clampFont(DeepRead.prefs.number("view.cardFontSize", 12)) + 1}px`);
 
       // Body: the AI's explanation; the translation is a folded part.
-      const key = `p_${paragraph.pageIndex}_${paragraph.paragraphIndex}`;
+      // A paragraph merged into a card shows that card's explanation.
+      const key = this.session.groupLead(`p_${paragraph.pageIndex}_${paragraph.paragraphIndex}`);
       const explanation = this.session.explanation?.(key);
       if (explanation) {
         const body = el(doc, "div", "dr-explain");
@@ -757,16 +843,22 @@
       for (const point of paragraph.points || []) {
         const li = el(doc, "li");
         li.dataset.pointId = point.id;
-        li.dataset.level = String(this.session.pointLevel(point));
+        const paint = () => {
+          const level = this.session.pointLevel(point);
+          li.dataset.level = String(level);
+          const color = this.session.levelColor(level);
+          li.classList.toggle("dr-hl", !!color);
+          if (color) li.style.setProperty("--dr-hl", color);
+        };
+        paint();
         li.title = DeepRead.t("card.importance");
         li.append(el(doc, "div", "dr-point-summary", point.summary || ""));
         li.addEventListener("pointerenter", () => this._drawHover(paragraph, point.id));
         li.addEventListener("pointerleave", () => this._drawHover(paragraph));
         li.addEventListener("click", (e) => {
           e.stopPropagation();
-          const next = (this.session.pointLevel(point) % 3) + 1;
-          this.session.setPointImportance(point.id, next);
-          li.dataset.level = String(next);
+          this.session.setPointImportance(point.id, this.session.nextPointLevel(point));
+          paint();
         });
         list.append(li);
       }

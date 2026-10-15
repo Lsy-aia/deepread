@@ -48,11 +48,13 @@
     for (const page of session.data?.hierarchicalData || []) {
       for (const paragraph of page.paragraphs || []) {
         const key = `p_${page.pageIndex}_${paragraph.paragraphIndex}`;
+        // A card that covers several paragraphs is listed once, under its first paragraph.
+        if (session.groupLead && session.groupLead(key) !== key) continue;
         const explanation = session.explanation?.(key);
         const note = session.paragraphNote?.(key);
         if (!explanation && !note) continue;
-        const label = `p. ${page.pageIndex + 1} ¶${paragraph.paragraphIndex + 1}`;
-        const summary = session.paragraphSummary?.({ ...paragraph, pageIndex: page.pageIndex }) || paragraph.paragraphSummary || "";
+        const label = session.groupLabel ? session.groupLabel(key) : `p. ${page.pageIndex + 1} ¶${paragraph.paragraphIndex + 1}`;
+        const summary = session.groupTitle?.(key) || session.paragraphSummary?.({ ...paragraph, pageIndex: page.pageIndex }) || paragraph.paragraphSummary || "";
         const line = [`[${label}] ${summary}`, explanation ? `AI explanation: ${explanation}` : "", note ? `Reader's note: ${note}` : ""]
           .filter(Boolean).join("\n");
         if (used + line.length > maxChars) return lines.join("\n\n") + "\n\n[…more blocks truncated…]";

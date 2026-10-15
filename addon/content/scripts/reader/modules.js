@@ -9,7 +9,7 @@
 DeepRead.Modules = {
   LIST: [
     { key: "cards", pref: "view.marginCards", zh: "页边卡片", en: "Margin cards" },
-    { key: "hoverTranslation", pref: "view.translationPopup", zh: "悬停翻译", en: "Hover translation", hintZh: "译文显示在段落下方", hintEn: "Shown below the paragraph" },
+    { key: "hoverTranslation", pref: "view.translationPopup", zh: "悬停翻译", en: "Hover translation", hintZh: "双栏放到另一栏，单栏放在段落下方，与原段同大小", hintEn: "In the other column (two-column pages) or below, same size as the paragraph" },
     { key: "highlights", pref: "view.highlights", zh: "要点高亮", en: "Key-point highlights", hintZh: "重要 / 关键要点在原文中着色", hintEn: "Colour important points in the PDF" },
     { key: "structureBar", pref: "view.structureBar", zh: "全文结构条", en: "Section bar", hintZh: "工具栏下的章节横条", hintEn: "Section strip under the toolbar" },
     { key: "figureCards", pref: "view.figureCards", zh: "图表卡片", en: "Figure cards", hintZh: "图表成卡，附读图步骤", hintEn: "Figures as cards with reading steps" },

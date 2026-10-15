@@ -43,3 +43,6 @@
 }
 .deepread-card[aria-checked="true"] > .deepread-card-badge { display: block; }
 #deepread-pref-current-tpl { display: none; }
+
+.deepread-hl-colors { display: inline-flex; align-items: center; gap: 6px; margin-inline: 8px; }
+.deepread-hl-swatch { width: 26px; height: 26px; padding: 0; border: 1px solid ThreeDShadow; border-radius: 4px; background: none; cursor: pointer; }

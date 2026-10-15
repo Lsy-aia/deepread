@@ -74,7 +74,7 @@ E2E.run = async function () {
   const target = page.paragraphs.find((p) => p.paragraphIndex === 2);
   await session.navigateToParagraph({ ...target, pageIndex: 1 });
   await sleep(1000);
-  const key = "p_1_2";
+  const key = session.groupLead("p_1_2"); // a merged card is keyed by its first paragraph
   overlay.openParagraph((overlay.pages.get(1) || []).find((p) => p.paragraphIndex === 2));
   await sleep(800);
   const cardEl = () => rail.cards.get(key)?.el;
@@ -133,7 +133,7 @@ E2E.run = async function () {
   await sleep(800);
   step("chat", {
     hasBlocks: prompt.includes("# Paragraph blocks"),
-    hasLabel: prompt.includes("[p. 2 ¶3]"),
+    hasLabel: prompt.includes(`[${session.groupLabel(key)}]`),
     hasExplanation: prompt.includes("AI explanation:"),
     openBlock: rail.focusKey,
   });

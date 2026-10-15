@@ -104,7 +104,7 @@ E2E.run = async function () {
   // ---- 2) click → open the margin card ----
   await session.navigateToParagraph({ ...target, pageIndex: 1 });
   await sleep(1200);
-  const key = `p_1_${target.paragraphIndex}`;
+  const key = session.groupLead(`p_1_${target.paragraphIndex}`); // card of a merged group is keyed by its first paragraph
   const compactBefore = [...(rail.compactPages || [])];
   overlay.openParagraph(live(1, target.paragraphIndex));
   await sleep(900);
@@ -125,14 +125,17 @@ E2E.run = async function () {
   await shot("interact-open-card");
 
   // Another paragraph replaces it; a click on blank space closes.
-  const other = page.paragraphs.find((p) => p.paragraphIndex !== target.paragraphIndex && p.paragraphType === "text");
+  const other = page.paragraphs.find((p) => session.groupLead(`p_1_${p.paragraphIndex}`) !== key && p.paragraphType === "text");
   overlay.openParagraph(live(1, other.paragraphIndex));
   await sleep(700);
   const firstStillOpen = rail.cards.get(key)?.el.classList.contains("dr-open");
-  const second = rail.cards.get(`p_1_${other.paragraphIndex}`)?.el.classList.contains("dr-open");
+  const firstStillExpanded = rail.cards.get(key)?.el.classList.contains("dr-expanded"); // pref cards.keepOpen (default on)
+  const second = rail.cards.get(session.groupLead(`p_1_${other.paragraphIndex}`))?.el.classList.contains("dr-open");
   overlay.openParagraph(null);
   await sleep(600);
-  step("switch-close", { firstStillOpen, secondOpen: second, afterBlank: rail.focusKey, openCards: rail.root.querySelectorAll(".dr-open").length });
+  step("switch-close", { firstStillOpen, firstStillExpanded, secondOpen: second, afterBlank: rail.focusKey, openCards: rail.root.querySelectorAll(".dr-open").length, keptOpen: rail.openCount });
+  rail.collapseAll();
+  await sleep(300);
 
   // Unsaved "my understanding" text survives the card closing (re-render).
   overlay.openParagraph(live(1, target.paragraphIndex));

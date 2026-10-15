@@ -73,6 +73,36 @@ DeepRead.prefs = {
     };
   },
 
+  /** Highlighter colours (1-6 lowercase "#rrggbb"); falls back to the default pair. */
+  normalizeColors(list) {
+    const out = [];
+    for (const c of Array.isArray(list) ? list : []) {
+      let s = String(c || "").trim().toLowerCase();
+      if (/^#[0-9a-f]{3}$/.test(s)) s = "#" + s[1] + s[1] + s[2] + s[2] + s[3] + s[3];
+      if (/^#[0-9a-f]{6}$/.test(s)) out.push(s);
+      if (out.length >= 6) break;
+    }
+    return out;
+  },
+
+  highlightColors() {
+    let list = [];
+    try {
+      list = this.normalizeColors(JSON.parse(String(this.get("highlight.colors") || "[]")));
+    }
+    catch (e) {
+      list = [];
+    }
+    return list.length ? list : ["#3b82f6", "#ef4444"];
+  },
+
+  setHighlightColors(list) {
+    const colors = this.normalizeColors(list);
+    const final = colors.length ? colors : ["#3b82f6", "#ef4444"];
+    this.set("highlight.colors", JSON.stringify(final));
+    return final;
+  },
+
   language() {
     const lang = this.get("language") || "zh";
     return DeepRead.PARSE_LANGUAGES?.[lang] ? lang : "zh";

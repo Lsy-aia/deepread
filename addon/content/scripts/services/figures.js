@@ -13,6 +13,7 @@
   const MAX_CAPTION = 700;
   const MAX_MENTIONS = 4;
   const NEAR = 80; // per-mille
+  const MERGE_GAP = 30; // per-mille; max gap for an uncaptioned part to join a figure
 
   const NUM = "(?:\\d+|[IVX]+|[A-Z]\\d+)";
   const CAPTION_RE = new RegExp(
@@ -49,11 +50,6 @@
     return `${kind === "figure" ? "fig" : "tab"}:${number}`;
   }
 
-  function joinCaption(v) {
-    if (Array.isArray(v)) return v.map(str).filter(Boolean).join(" ");
-    return str(v);
-  }
-
   function parseCaption(caption) {
     const m = CAPTION_RE.exec(caption);
     if (!m) return null;
@@ -68,47 +64,130 @@
     return t;
   }
 
+  const VISUAL_TYPES = new Set(["image", "table", "chart", "figure"]);
+  const CAPTION_KEYS = ["image_caption", "table_caption", "chart_caption", "img_caption", "caption"];
+
+  // Caption of a visual item: starts at the first line matching CAPTION_RE (earlier lines are panel labels).
+  function captionOf(it) {
+    for (const key of CAPTION_KEYS) {
+      const v = it[key];
+      const entries = Array.isArray(v) ? v : [v];
+      const lines = [];
+      for (const e of entries) {
+        for (const line of str(e).split(/\r?\n/)) {
+          const t = line.trim();
+          if (t) lines.push(t);
+        }
+      }
+      const at = lines.findIndex((l) => CAPTION_RE.test(l));
+      if (at >= 0) return lines.slice(at).join(" ");
+    }
+    return "";
+  }
+
+  function boxGap(a, b) {
+    const dx = Math.max(0, a[0] - b[2], b[0] - a[2]);
+    const dy = Math.max(0, a[1] - b[3], b[1] - a[3]);
+    return { dx, dy };
+  }
+  function unionInto(a, b) {
+    a[0] = Math.min(a[0], b[0]);
+    a[1] = Math.min(a[1], b[1]);
+    a[2] = Math.max(a[2], b[2]);
+    a[3] = Math.max(a[3], b[3]);
+  }
+  function closeness(a, b) {
+    const { dx, dy } = boxGap(a, b);
+    return dx <= MERGE_GAP && dy <= MERGE_GAP ? Math.hypot(dx, dy) : Infinity;
+  }
+
   function list(contentList) {
     const items = Array.isArray(contentList) ? contentList : [];
-    const out = [];
+    const entries = []; // { order, pageIndex, bbox, caption, textIdx, captionOnly }
     const used = new Set();
-    const seen = new Map();
-    const push = (it, caption, textIdx) => {
-      const p = parseCaption(caption);
-      if (!p) return;
-      const prefix = p.kind === "figure" ? "fig" : "tab";
-      let id = `${prefix}_${p.number}`;
-      const n = (seen.get(id) || 0) + 1;
-      seen.set(id, n);
-      if (n > 1) id = `${id}_${n}`;
-      out.push({
-        id,
-        kind: p.kind,
-        label: `${p.kind === "figure" ? "图" : "表"} ${p.number}`,
-        number: p.number,
-        pageIndex: it.page_idx || 0,
-        bbox: Array.isArray(it.bbox) ? it.bbox.slice() : null,
-        caption,
-        title: shortTitle(p.rest),
-        blockId: textIdx,
-      });
-    };
+    const isVisual = (it) => !!it && VISUAL_TYPES.has(it.type);
+    const hasBox = (it) => Array.isArray(it.bbox) && it.bbox.length >= 4;
+
+    const figures = [];
+    const loose = [];
     items.forEach((it, idx) => {
-      if (!it || (it.type !== "image" && it.type !== "table")) return;
-      const caption = joinCaption(it.type === "table" ? (it.table_caption?.length ? it.table_caption : it.image_caption) : it.image_caption);
+      if (!isVisual(it)) return;
+      const caption = captionOf(it);
+      const page = it.page_idx || 0;
       if (caption) {
-        push(it, caption, undefined);
-        return;
+        figures.push({ order: idx, pageIndex: page, bbox: hasBox(it) ? it.bbox.slice(0, 4) : null, caption });
       }
-      // Caption stored as a separate text block right above/below.
-      if (!Array.isArray(it.bbox)) return;
+      else if (hasBox(it)) {
+        loose.push({ order: idx, pageIndex: page, bbox: it.bbox.slice(0, 4), done: false });
+      }
+    });
+
+    // Uncaptioned parts join the nearest captioned figure on the page; repeat so rows of sub-images chain.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const p of loose) {
+        if (p.done) continue;
+        let best = null;
+        let bestD = Infinity;
+        for (const f of figures) {
+          if (!f.bbox || f.pageIndex !== p.pageIndex) continue;
+          const d = closeness(f.bbox, p.bbox);
+          if (d < bestD) {
+            best = f;
+            bestD = d;
+          }
+        }
+        if (best) {
+          unionInto(best.bbox, p.bbox);
+          best.order = Math.min(best.order, p.order);
+          p.done = true;
+          changed = true;
+        }
+      }
+    }
+    entries.push(...figures);
+
+    // Remaining uncaptioned parts: cluster, then look for a caption in a nearby text block.
+    const rest = loose.filter((p) => !p.done);
+    const clusters = [];
+    for (const p of rest) {
+      const hit = [];
+      clusters.forEach((c, i) => {
+        if (c.pageIndex === p.pageIndex && closeness(c.bbox, p.bbox) !== Infinity) hit.push(i);
+      });
+      const c = { pageIndex: p.pageIndex, bbox: p.bbox.slice(), order: p.order };
+      for (const i of hit) {
+        unionInto(c.bbox, clusters[i].bbox);
+        c.order = Math.min(c.order, clusters[i].order);
+      }
+      for (let k = hit.length - 1; k >= 0; k--) clusters.splice(hit[k], 1);
+      clusters.push(c);
+    }
+    // Merging order can leave touching clusters; fold them until stable.
+    for (let again = true; again;) {
+      again = false;
+      outer: for (let i = 0; i < clusters.length; i++) {
+        for (let j = i + 1; j < clusters.length; j++) {
+          if (clusters[i].pageIndex === clusters[j].pageIndex && closeness(clusters[i].bbox, clusters[j].bbox) !== Infinity) {
+            unionInto(clusters[i].bbox, clusters[j].bbox);
+            clusters[i].order = Math.min(clusters[i].order, clusters[j].order);
+            clusters.splice(j, 1);
+            again = true;
+            break outer;
+          }
+        }
+      }
+    }
+    clusters.sort((a, b) => a.order - b.order);
+    for (const c of clusters) {
       let best = null;
       let bestGap = Infinity;
       items.forEach((tx, j) => {
-        if (!tx || used.has(j) || tx.type === "image" || tx.type === "table" || tx.page_idx !== it.page_idx) return;
-        if (typeof tx.text !== "string" || !Array.isArray(tx.bbox) || !CAPTION_RE.test(tx.text)) return;
-        const below = tx.bbox[1] - it.bbox[3];
-        const above = it.bbox[1] - tx.bbox[3];
+        if (!tx || used.has(j) || isVisual(tx) || tx.page_idx !== c.pageIndex) return;
+        if (typeof tx.text !== "string" || !hasBox(tx) || !CAPTION_RE.test(tx.text)) return;
+        const below = tx.bbox[1] - c.bbox[3];
+        const above = c.bbox[1] - tx.bbox[3];
         const gap = below >= -20 ? below : above >= -20 ? above : Infinity;
         if (gap <= NEAR && gap < bestGap) {
           best = j;
@@ -117,10 +196,54 @@
       });
       if (best !== null) {
         used.add(best);
-        push(it, str(items[best].text), best);
+        entries.push({ order: c.order, pageIndex: c.pageIndex, bbox: c.bbox, caption: str(items[best].text) });
       }
+    }
+
+    // Strict caption text blocks no figure used.
+    const listed = new Set();
+    for (const e of entries) {
+      const p = parseCaption(e.caption);
+      if (p) listed.add(keyOf(p.kind, p.number));
+    }
+    items.forEach((tx, j) => {
+      if (!tx || used.has(j) || isVisual(tx) || typeof tx.text !== "string" || !hasBox(tx)) return;
+      if (!CAPTION_STRICT_RE.test(tx.text)) return;
+      const p = parseCaption(str(tx.text));
+      if (!p) return;
+      const k = keyOf(p.kind, p.number);
+      if (listed.has(k)) return;
+      listed.add(k);
+      entries.push({ order: j, pageIndex: tx.page_idx || 0, bbox: tx.bbox.slice(0, 4), caption: str(tx.text), captionOnly: true });
     });
-    for (const f of out) delete f.blockId;
+
+    entries.sort((a, b) => a.order - b.order);
+    const seen = new Map();
+    const out = [];
+    for (const e of entries) {
+      const p = parseCaption(e.caption);
+      if (!p) continue;
+      const prefix = p.kind === "figure" ? "fig" : "tab";
+      let id = `${prefix}_${p.number}`;
+      const n = (seen.get(id) || 0) + 1;
+      seen.set(id, n);
+      if (n > 1) id = `${id}_${n}`;
+      const f = {
+        id,
+        kind: p.kind,
+        label: `${p.kind === "figure" ? "图" : "表"} ${p.number}`,
+        number: p.number,
+        pageIndex: e.pageIndex,
+        bbox: e.bbox,
+        caption: e.caption,
+        title: shortTitle(p.rest),
+      };
+      if (e.captionOnly) f.captionOnly = true;
+      out.push(f);
+    }
+    const top = (f) => (f.bbox ? f.bbox[1] : 0);
+    const left = (f) => (f.bbox ? f.bbox[0] : 0);
+    out.sort((a, b) => a.pageIndex - b.pageIndex || top(a) - top(b) || left(a) - left(b));
     return out;
   }
 

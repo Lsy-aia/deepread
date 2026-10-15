@@ -560,6 +560,82 @@
     input.addEventListener("change", onInput);
   }
 
+  var HL_DEFAULT = ["#3b82f6", "#ef4444"];
+  var HL_PALETTE = ["#22c55e", "#f59e0b", "#a855f7", "#ec4899", "#14b8a6", "#6366f1"];
+
+  function normColors(list) {
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function (c) {
+      var s = String(c || "").trim().toLowerCase();
+      if (/^#[0-9a-f]{3}$/.test(s)) s = "#" + s[1] + s[1] + s[2] + s[2] + s[3] + s[3];
+      if (/^#[0-9a-f]{6}$/.test(s) && out.length < 6) out.push(s);
+    });
+    return out;
+  }
+
+  function readColors() {
+    var list = [];
+    try {
+      list = normColors(JSON.parse(String(getPref("highlight.colors", "[]")) || "[]"));
+    } catch (e) {}
+    return list.length ? list : HL_DEFAULT.slice();
+  }
+
+  function writeColors(list) {
+    var c = normColors(list);
+    setPref("highlight.colors", JSON.stringify(c.length ? c : HL_DEFAULT));
+  }
+
+  function wireHighlight() {
+    var box = $("deepread-pref-hl-colors");
+    if (!box) return;
+    function render() {
+      var colors = readColors();
+      while (box.firstChild) box.removeChild(box.firstChild);
+      colors.forEach(function (c, i) {
+        var inp = document.createElementNS("http://www.w3.org/1999/xhtml", "input");
+        inp.type = "color";
+        inp.className = "deepread-hl-swatch";
+        inp.value = c;
+        var save = function () {
+          var cur = readColors();
+          cur[i] = inp.value;
+          writeColors(cur);
+        };
+        inp.addEventListener("input", save);
+        inp.addEventListener("change", save);
+        box.appendChild(inp);
+      });
+      var add = $("deepread-pref-hl-add");
+      var rem = $("deepread-pref-hl-remove");
+      if (add) add.disabled = colors.length >= 6;
+      if (rem) rem.disabled = colors.length <= 1;
+    }
+    var add = $("deepread-pref-hl-add");
+    if (add) add.addEventListener("command", function () {
+      var cur = readColors();
+      if (cur.length >= 6) return;
+      var next = HL_PALETTE.filter(function (c) { return cur.indexOf(c) < 0; })[0] || "#22c55e";
+      cur.push(next);
+      writeColors(cur);
+      render();
+    });
+    var rem = $("deepread-pref-hl-remove");
+    if (rem) rem.addEventListener("command", function () {
+      var cur = readColors();
+      if (cur.length <= 1) return;
+      cur.pop();
+      writeColors(cur);
+      render();
+    });
+    var reset = $("deepread-pref-hl-reset");
+    if (reset) reset.addEventListener("command", function () {
+      writeColors(HL_DEFAULT);
+      render();
+    });
+    render();
+  }
+
   function init() {
     var root = $("deepread-pref-root");
     if (!root || root.dataset.deepreadInit === "1") return;
@@ -594,6 +670,8 @@
     wireUpdate();
     wireSlider("deepread-pref-card-width", "deepread-pref-card-width-value", "view.railWidth", 200, 520, "px");
     wireSlider("deepread-pref-card-fontsize", "deepread-pref-card-fontsize-value", "view.cardFontSize", 10, 18, "px");
+
+    wireHighlight();
 
     wireTest("deepread-pref-llm-test", "deepread-pref-llm-status", function () {
       return Zotero.DeepRead && Zotero.DeepRead.LLM;

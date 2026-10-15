@@ -66,6 +66,40 @@ E2E.run = async function () {
     if (after !== 15) throw new Error("cardFontSize pref not updated by slider: " + after);
   }
   {
+    // Highlighter colours: swatches, + / - / reset, live save.
+    const hlPref = () => JSON.parse(Zotero.Prefs.get("deepread.highlight.colors") || "[]");
+    const swatches = () => doc.querySelectorAll("#deepread-pref-hl-colors .deepread-hl-swatch");
+    const click = (id) => doc.getElementById(id).click();
+    const initialCount = swatches().length;
+    click("deepread-pref-hl-add");
+    await sleep(200);
+    const afterAdd = swatches().length;
+    const addPrefLen = hlPref().length;
+    const first = swatches()[0];
+    first.value = "#112233";
+    first.dispatchEvent(new win.Event("input", { bubbles: true }));
+    first.dispatchEvent(new win.Event("change", { bubbles: true }));
+    const edited = hlPref()[0];
+    click("deepread-pref-hl-remove");
+    await sleep(100);
+    click("deepread-pref-hl-remove");
+    await sleep(100);
+    const afterRemove = swatches().length;
+    click("deepread-pref-hl-reset");
+    await sleep(200);
+    const afterReset = hlPref();
+    const ok = initialCount === 2 && afterAdd === 3 && addPrefLen === 3 && edited === "#112233"
+      && afterRemove === 1 && JSON.stringify(afterReset) === JSON.stringify(["#3b82f6", "#ef4444"]) && swatches().length === 2;
+    step("prefs-highlight", {
+      initialCount, afterAdd, addPrefLen, edited, afterRemove, afterReset, ok,
+      keepOpen: !!doc.getElementById("deepread-pref-cards-keepopen"),
+      groupParagraphs: !!doc.getElementById("deepread-pref-cards-groupparagraphs"),
+      keepOpenPref: Zotero.Prefs.get("deepread.cards.keepOpen"),
+      groupPref: Zotero.Prefs.get("deepread.cards.groupParagraphs"),
+    });
+    if (!ok) throw new Error("highlight colour settings failed: " + JSON.stringify({ initialCount, afterAdd, addPrefLen, edited, afterRemove, afterReset }));
+  }
+  {
     // Profiles: migration, add (same path as the button), switch, switch back.
     const click = (id) => doc.getElementById(id).click();
     const profs = () => JSON.parse(Zotero.Prefs.get("deepread.llm.profiles") || "[]");

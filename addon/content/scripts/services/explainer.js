@@ -37,6 +37,25 @@
     "Include one entry for every item, and keep the keys exactly as given.",
   ].join("\n");
 
+  // Grouped mode: the model may merge consecutive paragraphs that discuss the same thing into one card.
+  const GROUP_SYSTEM_NOTE = [
+    "You may merge consecutive paragraphs into one card when they explain the same point, step or result (for example a paragraph that continues the previous one's argument). A merged card has one role and one explanation that covers all of its paragraphs; it may be a bit longer, 3 to 7 sentences.",
+    "Every card also gets a short title naming what the card is about.",
+  ].join("\n");
+
+  const GROUP_TASK_PROMPT = [
+    "Explain the paragraphs below for a reader who is new to the topic, grouped into cards.",
+    "Respond with JSON only, in exactly this shape:",
+    "{\"cards\":[{\"keys\":[\"<key>\",\"<key>\"],\"role\":\"<one role>\",\"title\":\"<short title>\",\"explanation\":\"<your explanation>\"}]}",
+    "Rules for cards:",
+    "- The keys of one card must be consecutive in the order given. Never skip a paragraph inside a card.",
+    "- Merge only paragraphs that explain the same point, step or result (a paragraph that continues the previous one's argument). Put at most 4 paragraphs in one card.",
+    "- Most cards will have a single key. When in doubt, do not merge.",
+    "- Every input key appears in exactly one card, and keys are copied exactly as given.",
+    "- A merged card's explanation covers all of its paragraphs (3 to 7 sentences).",
+    "- The title is 4 to 14 words (or at most 16 characters for Chinese, Japanese or Korean) naming what the card is about, in the target language.",
+  ].join("\n");
+
   const str = (v) => (typeof v === "string" ? v.trim() : v === null || v === undefined ? "" : String(v).trim());
 
   function abortError() {
@@ -59,8 +78,9 @@
     return lang?.instruction || "Simplified Chinese";
   }
 
-  function systemPrompt(targetLang) {
-    return `${SYSTEM_PROMPT}\nWrite all explanations in ${languageInstruction(targetLang)}.`;
+  function systemPrompt(targetLang, group) {
+    const base = group ? `${SYSTEM_PROMPT}\n${GROUP_SYSTEM_NOTE}` : SYSTEM_PROMPT;
+    return `${base}\nWrite all explanations${group ? " and titles" : ""} in ${languageInstruction(targetLang)}.`;
   }
 
   function key(pageIndex, paragraphIndex) {
@@ -97,7 +117,12 @@
     return batches;
   }
 
-  /** Lenient parse of a model reply into a Map(key -> text), restricted to `expected` keys. */
+  /**
+   * Lenient parse of a model reply (cards, or the legacy explanations / map / array shapes).
+   * `expected`: ordered array of the batch keys (a Set also works, in insertion order).
+   * → Map(leadKey -> text) with .roles (every member key -> role), .groups (leadKey -> keys, >= 2 keys only),
+   *   .titles (leadKey -> title) and .covered (Set of all lead and member keys).
+   */
   function parseReply(content, expected) {
     let s = String(content || "").replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
     s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
@@ -118,43 +143,62 @@
       }
     }
     const out = new Map();
-    out.roles = new Map(); // key -> role, when the model gave a known one
+    out.roles = new Map();
+    out.groups = new Map();
+    out.titles = new Map();
+    out.covered = new Set();
     if (!value || typeof value !== "object") return out;
-    const add = (k, t, role) => {
-      const kk = str(k);
-      const tt = str(t);
-      if (kk && tt && (!expected || expected.has(kk))) {
-        out.set(kk, tt);
-        const rr = str(role).toLowerCase();
-        if (ROLES.includes(rr)) out.roles.set(kk, rr);
-      }
-    };
+    const order = expected ? new Map([...expected].map((k, i) => [k, i])) : null;
+    const cards = [];
+    const single = (k, t, role) => cards.push({ keys: [k], text: t, role });
     let list = null;
     if (Array.isArray(value)) list = value;
+    else if (Array.isArray(value.cards)) list = value.cards;
     else if (Array.isArray(value.explanations)) list = value.explanations;
     if (list) {
       for (const it of list) {
-        if (it && typeof it === "object") add(it.key, it.explanation ?? it.text ?? it.explain, it.role);
+        if (!it || typeof it !== "object") continue;
+        const keys = Array.isArray(it.keys) ? it.keys : [it.key];
+        cards.push({ keys, text: it.explanation ?? it.text ?? it.explain, role: it.role, title: it.title });
       }
     }
     else {
       const map = value.explanations && typeof value.explanations === "object" ? value.explanations : value;
       for (const [k, t] of Object.entries(map)) {
-        if (typeof t === "string") add(k, t);
-        else if (t && typeof t === "object") add(k, t.explanation ?? t.text, t.role);
+        if (typeof t === "string") single(k, t);
+        else if (t && typeof t === "object") single(k, t.explanation ?? t.text, t.role);
       }
+    }
+    for (const card of cards) {
+      const text = str(card.text);
+      let keys = [...new Set(card.keys.map(str).filter((k) => k && !out.covered.has(k) && (!order || order.has(k))))];
+      if (!text || !keys.length) continue;
+      if (order) {
+        keys.sort((x, y) => order.get(x) - order.get(y));
+        let n = 1; // keep the first consecutive run, starting at the first key
+        while (n < keys.length && order.get(keys[n]) === order.get(keys[n - 1]) + 1) n++;
+        keys = keys.slice(0, n);
+      }
+      const lead = keys[0];
+      out.set(lead, text);
+      for (const k of keys) out.covered.add(k);
+      const role = str(card.role).toLowerCase();
+      if (ROLES.includes(role)) for (const k of keys) out.roles.set(k, role);
+      if (keys.length > 1) out.groups.set(lead, keys);
+      const title = str(card.title);
+      if (title && title.length <= 60) out.titles.set(lead, title);
     }
     return out;
   }
 
-  function buildUserMessage(items, { paperContext, previous, neighbors }) {
+  function buildUserMessage(items, { paperContext, previous, neighbors, group }) {
     const parts = [];
     if (str(paperContext)) parts.push(`Paper context:\n${str(paperContext).slice(0, MAX_CONTEXT_CHARS)}`);
     if (str(previous)) parts.push(`Summaries of the previous page (for connecting to earlier content):\n${str(previous)}`);
     if (neighbors && neighbors.length) {
       parts.push(`Preceding paragraphs:\n${neighbors.map((t) => String(t).slice(0, MAX_NEIGHBOR_CHARS)).join("\n\n")}`);
     }
-    parts.push(TASK_PROMPT);
+    parts.push(group ? GROUP_TASK_PROMPT : TASK_PROMPT);
     parts.push(`${MARKER}\n${JSON.stringify({ items })}`);
     return parts.join("\n\n");
   }
@@ -178,14 +222,14 @@
 
   async function request(items, ctx, opts) {
     const res = await DeepRead.LLM.complete({
-      system: systemPrompt(opts.targetLang),
+      system: systemPrompt(opts.targetLang, ctx.group),
       messages: [{ role: "user", content: buildUserMessage(items, ctx) }],
       responseFormat: { type: "json_object" },
       temperature: 0.4,
       signal: opts.signal,
       config: opts.config,
     });
-    return parseReply(res && res.content, new Set(items.map((i) => i.key)));
+    return parseReply(res && res.content, items.map((i) => i.key));
   }
 
   /** One request, retried once on a (non-abort) failure. */
@@ -208,10 +252,16 @@
     }
   }
 
-  /** → Map(key → text); `.roles` is a Map(key → role). onPage(pageIndex, Map(key → text), Map(key → role)). */
+  /**
+   * → Map(leadKey → text) with .roles (key → role, all member keys), .groups (leadKey → keys, merged cards only), .titles (leadKey → title).
+   * onPage(pageIndex, Map(leadKey → text), roles, { groups, titles }). opts.group (default true) lets the model merge consecutive paragraphs.
+   */
   async function explainPages(hierarchicalData, opts = {}) {
     const results = new Map();
     results.roles = new Map();
+    results.groups = new Map();
+    results.titles = new Map();
+    const group = opts.group !== false;
     const batches = pageBatches(hierarchicalData, { only: opts.only });
     const total = batches.length;
     const cfgConcurrency = Number(DeepRead.prefs?.llmConfig?.()?.concurrency) || 4;
@@ -226,17 +276,24 @@
       const ctx = {
         paperContext: opts.paperContext,
         previous: previousPageSummaries(hierarchicalData, batch.pageIndex),
+        group,
       };
       const got = new Map();
       got.roles = new Map();
+      got.groups = new Map();
+      got.titles = new Map();
+      const covered = new Set();
       const take = (reply) => {
         for (const [k, t] of reply) got.set(k, t);
         for (const [k, r] of reply.roles || []) got.roles.set(k, r);
+        for (const [k, g] of reply.groups || []) got.groups.set(k, g);
+        for (const [k, t] of reply.titles || []) got.titles.set(k, t);
+        for (const k of reply.covered || reply.keys()) covered.add(k);
       };
       let error = null;
       try {
         take(await requestWithRetry(batch.items, ctx, opts));
-        const missing = batch.items.filter((i) => !got.has(i.key));
+        const missing = batch.items.filter((i) => !covered.has(i.key));
         if (missing.length) {
           try {
             take(await request(missing, ctx, opts));
@@ -253,7 +310,11 @@
       }
       for (const [k, t] of got) results.set(k, t);
       for (const [k, r] of got.roles) results.roles.set(k, r);
-      if (got.size && typeof opts.onPage === "function") opts.onPage(batch.pageIndex, got, got.roles);
+      for (const [k, g] of got.groups) results.groups.set(k, g);
+      for (const [k, t] of got.titles) results.titles.set(k, t);
+      if (got.size && typeof opts.onPage === "function") {
+        opts.onPage(batch.pageIndex, got, got.roles, { groups: got.groups, titles: got.titles });
+      }
       done++;
       progress(error ? { pageIndex: batch.pageIndex, error } : {});
     }

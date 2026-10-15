@@ -152,7 +152,10 @@
       this.figureGuides = {}; // figure id → { title, steps: [{ text, panel }] }
       this.editingFlashcard = null;
       this.flipped = new Set();
-      this.explanations = {}; // paragraph key → { text, at }: the "AI 讲解" shown as the card body
+      // paragraph key → { text, role, at, members?, title? }: the "AI 讲解" shown as the card body. A card that
+      // covers several consecutive paragraphs is stored on its first (lead) key with `members`; the other
+      // members only hold { lead, role, at }.
+      this.explanations = {};
       this.explaining = new Set(); // keys being generated
       this._explainAbort = null;
       this.on((event) => {
@@ -242,11 +245,18 @@
       if (this.data) this.overlay.setData(this.data.hierarchicalData);
       this.rail?.attach(view);
       this.structureBar?.attach(view);
+      // Highlighter colours change the PDF highlights and the cards' key points.
+      this._prefObservers = [Zotero.Prefs.registerObserver("deepread.highlight.colors", () => {
+        this.overlay.renderAllPages();
+        this.rail?.refresh();
+      })];
       this.loadFlashcards().catch((e) => DeepRead.log("loading flashcards failed", String(e)));
       this._emit();
     }
 
     destroy() {
+      for (const id of this._prefObservers || []) Zotero.Prefs.unregisterObserver(id);
+      this._prefObservers = [];
       this.cancel();
       this._explainAbort?.abort();
       this._figureAbort?.abort();
@@ -625,6 +635,58 @@
       return this.explanations?.[key]?.text || "";
     }
 
+    /** Key of the card a paragraph is shown in: the lead of its merged card, or the key itself. */
+    groupLead(key) {
+      const lead = this.explanations?.[key]?.lead;
+      return lead && this.explanations[lead]?.members?.includes(key) ? lead : key;
+    }
+
+    /** Keys of the paragraphs a card covers, in order (just [key] for a one-paragraph card). */
+    groupMembers(key) {
+      const lead = this.groupLead(key);
+      const members = this.explanations?.[lead]?.members;
+      return Array.isArray(members) && members.length > 1 ? members : [lead];
+    }
+
+    groupTitle(key) {
+      return this.explanations?.[this.groupLead(key)]?.title || "";
+    }
+
+    /** "p. 3 ¶2" or "p. 3 ¶2–4" for a merged card. */
+    groupLabel(key) {
+      const members = this.groupMembers(key).map((k) => /^p_(\d+)_(\d+)$/.exec(k)).filter(Boolean);
+      if (!members.length) return key;
+      const page = Number(members[0][1]) + 1;
+      const first = Number(members[0][2]) + 1;
+      const last = Number(members.at(-1)[2]) + 1;
+      return first === last ? `p. ${page} ¶${first}` : `p. ${page} ¶${first}–${last}`;
+    }
+
+    /** Store explanations from the explainer: Map(lead → text), roles, groups (lead → keys), titles. */
+    _storeExplanations(map, roles, extra = {}) {
+      const at = Date.now();
+      let count = 0;
+      for (const [lead, text] of map) {
+        const members = extra.groups?.get(lead) || [lead];
+        // Leaving an old merged card: its other members fall back to their own cards.
+        for (const key of members) {
+          const old = this.explanations[key];
+          if (old?.members) for (const k of old.members) if (!members.includes(k) && this.explanations[k]?.lead === key) delete this.explanations[k];
+        }
+        const entry = { text, role: roles?.get(lead) || "", at };
+        if (members.length > 1) {
+          entry.members = [...members];
+          const title = extra.titles?.get(lead);
+          if (title) entry.title = title;
+        }
+        this.explanations[lead] = entry;
+        for (const key of members.slice(1)) this.explanations[key] = { lead, role: roles?.get(key) || entry.role, at };
+        for (const key of members) this.explaining.delete(key);
+        count += members.length;
+      }
+      return count;
+    }
+
     /** The paragraph's role in the argument (background / gap / prior / contribution / method / result / limitation). */
     paragraphRole(key) {
       return this.explanations?.[key]?.role || "";
@@ -658,7 +720,7 @@
       for (const page of this.data?.hierarchicalData || []) {
         for (const paragraph of page.paragraphs || []) {
           const key = DeepRead.Explainer.key(page.pageIndex, paragraph.paragraphIndex);
-          if (DeepRead.Explainer.eligible(paragraph) && !this.explanation(key) && !this.explaining.has(key)) keys.push(key);
+          if (DeepRead.Explainer.eligible(paragraph) && !this.explanation(this.groupLead(key)) && !this.explaining.has(key)) keys.push(key);
         }
       }
       return keys;
@@ -679,13 +741,10 @@
           targetLang: DeepRead.prefs.language(),
           paperContext: this.paperContext(),
           only: new Set(keys),
+          group: DeepRead.prefs.get("cards.groupParagraphs") !== false,
           signal: controller.signal,
-          onPage: (_pageIndex, map, roles) => {
-            for (const [key, text] of map) {
-              this.explanations[key] = { text, role: roles?.get(key) || "", at: Date.now() };
-              this.explaining.delete(key);
-              count++;
-            }
+          onPage: (_pageIndex, map, roles, extra) => {
+            count += this._storeExplanations(map, roles, extra);
             this._saveExplanationsSoon();
             this._emit("explanations");
           },
@@ -698,8 +757,16 @@
       return count;
     }
 
-    /** (Re)generate one paragraph's explanation. */
+    /** (Re)generate one card's explanation: a merged card is explained again as a group. */
     async explainParagraph(key) {
+      key = this.groupLead(key);
+      const members = this.groupMembers(key);
+      if (members.length > 1) {
+        if (members.some((k) => this.explaining.has(k))) return null;
+        if (!DeepRead.LLM.isConfigured()) throw Object.assign(new Error(DeepRead.t("error.noLLM")), { configError: true });
+        await this.explainAll({ only: members });
+        return this.explanation(this.groupLead(key));
+      }
       const found = this._paragraphByKey(key);
       if (!found || this.explaining.has(key)) return null;
       if (!DeepRead.LLM.isConfigured()) throw Object.assign(new Error(DeepRead.t("error.noLLM")), { configError: true });
@@ -881,6 +948,24 @@
     pointLevel(point) {
       const override = this.userState.pointImportance?.[point.id];
       return Number(override || point.importance_level || 1);
+    }
+
+    /** Highlighter colours ("#rrggbb"): level 2 is the first colour, level 3 the second, … */
+    highlightColors() {
+      return DeepRead.prefs.highlightColors?.() || ["#3b82f6", "#ef4444"];
+    }
+
+    /** Colour of a point level, or "" for level 1 (not highlighted). Levels beyond the list use the last colour. */
+    levelColor(level) {
+      if (!(level >= 2)) return "";
+      const colors = this.highlightColors();
+      return colors[Math.min(level - 2, colors.length - 1)];
+    }
+
+    /** One click on a key point: next highlighter colour, and after the last one back to none. */
+    nextPointLevel(point) {
+      const level = this.pointLevel(point);
+      return level >= this.highlightColors().length + 1 ? 1 : level + 1;
     }
 
     setPointImportance(pointId, level) {

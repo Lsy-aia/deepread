@@ -292,3 +292,34 @@ v0.4–v0.5 (ReadFlow client, built-in full-document translation, translated-PDF
   `agent.api.*`. 「检测」 only looks for the executable on PATH and the skills' `SKILL.md`
   (`~/agents/codex/skills`, `~/.codex/skills`, `~/.claude/skills`); it never executes anything.
 - e2e: `test/e2e/v08.js` (fallback, roles, bar + jump, figure card, refreshed cards, 功能 menu scopes).
+
+## v0.8.1: reading feedback
+
+- **Hover translation** (`overlay._drawTranslation`): the panel has the paragraph's width and (min-)height; its font
+  scale is binary-searched in `FIT_MIN`–`FIT_MAX` × the original's line-box size so the text fills the box (cached per
+  paragraph and page width in `overlay._trFit`). On a two-column page (`overlay.isTwoColumn(page)`, moved here from the
+  rail) a narrow paragraph's panel is mirrored into the other column at the same top (`data-side` right/left); otherwise
+  below/above as before.
+- **Merged cards.** `Explainer.explainPages(…, { group })` (session passes pref `cards.groupParagraphs`) lets the model
+  return `{"cards":[{keys, role, title, explanation}]}`; keys of a card are consecutive within a page batch (≤ 4).
+  Result: Map(lead → text) + `.roles` (all members), `.groups` (lead → keys), `.titles`; `onPage(page, map, roles,
+  { groups, titles })`. Session stores `explanations[lead] = { text, role, at, members, title }` and
+  `explanations[member] = { lead, role, at }` (`_storeExplanations`); `groupLead(key)`, `groupMembers(key)`,
+  `groupTitle(key)`, `groupLabel(key)` ("p. 3 ¶2–4"). The rail makes one item per lead (`item.members`), skips
+  followers, opens the lead for a click on any member, outlines all members on hover (`overlay.outlineParagraphs`).
+  `explainParagraph(key)` re-explains a merged card as a group (`explainAll({ only: members })`). Chat blocks list a
+  merged card once under its range label.
+- **Keep open** (pref `cards.keepOpen`, default true): `rail.openParagraph` moves the previously focused card into
+  `rail.expanded`; a blank click no longer folds it. `rail.collapseAll()`, `rail.openCount`.
+- **Highlighter** (pref `highlight.colors`, JSON list of 1–6 "#rrggbb"; `prefs.highlightColors()` /
+  `setHighlightColors()`): point level 1 = none, level n ≥ 2 = colour n−1 (beyond the list: last colour);
+  `session.nextPointLevel(point)` cycles back to 1 after the last colour; `session.levelColor(level)`. Cards set
+  `li.dr-hl` + `--dr-hl`; PDF rects use the colour at `HIGHLIGHT_ALPHA`. The session observes the pref and redraws.
+- **Folding rails** (prefs `view.railCollapsedLeft/Right`): `.dr-collapse` button per rail, `.dr-collapsed` = 24 px
+  strip (click to unfold); `_layout` skips folded sides.
+- **Figures** (`Figures.list`): visual types image/table/chart/figure; caption = first line in any caption field
+  (`image_caption`, `table_caption`, `chart_caption`, `img_caption`, `caption`) that starts like a caption, earlier
+  lines are panel labels; uncaptioned parts within `MERGE_GAP` (30‰) join the nearest captioned figure (repeated, so
+  rows of panels chain); leftover clusters try a nearby caption text block; unused caption text blocks become
+  `captionOnly` figures (no thumbnail). Cards carry `data-kind` figure (amber) / table (teal).
+- e2e: `test/e2e/v081.js` (needs `E2E_PARSER=builtin E2E_PDF2=<two-column pdf>`).

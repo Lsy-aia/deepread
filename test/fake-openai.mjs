@@ -162,11 +162,25 @@ function buildExplain(t) {
   const m = /Paragraphs to explain \(JSON\):\s*(\{.*\})/.exec(t);
   let items = [];
   try { items = JSON.parse(m[1]).items || []; } catch { /* keep empty */ }
-  const explanations = items.map((it) => {
-    const key = String(it.key);
+  const textFor = (key) => {
     let text = `这一段（${key}）讲的是作者如何用更直接的方式解决前文提到的问题。可以把它理解为整篇论文论证链条中的一环，后面的实验正是为了验证这里的说法。`;
     if (/_2$/.test(key)) text += ` 其中的 **自注意力** 需要对每一对位置计算一次，因此复杂度为 $O(n^2)$。`;
-    return { key, explanation: text, role: ROLES[hash(key) % 7] };
+    return text;
+  };
+  if (/"cards"/.test(t)) {
+    // grouped mode: merge the first two items of a batch with >= 3 items
+    const cards = [];
+    for (let i = 0; i < items.length; i++) {
+      const merge = i === 0 && items.length >= 3;
+      const keys = merge ? [String(items[0].key), String(items[1].key)] : [String(items[i].key)];
+      if (merge) i++;
+      cards.push({ keys, role: ROLES[hash(keys[0]) % 7], title: `Fake title of ${keys[0]}`, explanation: textFor(keys[0]) });
+    }
+    return { obj: { cards }, info: `items=${items.length} cards=${cards.length}` };
+  }
+  const explanations = items.map((it) => {
+    const key = String(it.key);
+    return { key, explanation: textFor(key), role: ROLES[hash(key) % 7] };
   });
   return { obj: { explanations }, info: `items=${items.length}` };
 }
