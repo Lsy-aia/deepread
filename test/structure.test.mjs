@@ -30,8 +30,10 @@ function monotonic(secs) {
   }
 }
 
-test("demo content list (Attention paper)", () => {
-  const cl = JSON.parse(fs.readFileSync(path.join(root, "test/fixtures/demo/demo_content_list.json"), "utf8"));
+const demoPath = path.join(root, "test/fixtures/demo/demo_content_list.json");
+if (!fs.existsSync(demoPath)) console.log("SKIP demo content list (test/fixtures/demo not present; run python3 test/build-fixture.py)");
+else test("demo content list (Attention paper)", () => {
+  const cl = JSON.parse(fs.readFileSync(demoPath, "utf8"));
   const secs = plain(S.sections(cl));
   assert.deepEqual(secs.map((s) => s.title), ["Abstract", "Introduction", "Background", "Model Architecture", "Why Self-Attention", "Training", "Results", "Conclusion"]);
   assert.deepEqual(secs.map((s) => s.number), [null, "1", "2", "3", "4", "5", "6", "7"]);

@@ -32,8 +32,10 @@ const img = (cap, page, bbox) => ({ type: "image", image_caption: cap ? [cap] : 
 const tbl = (cap, page, bbox) => ({ type: "table", table_caption: cap ? [cap] : [], page_idx: page, bbox });
 const txt = (text, page, bbox = [100, 500, 900, 540]) => ({ type: "text", text, page_idx: page, bbox });
 
-await test("list: demo content list", () => {
-  const cl = JSON.parse(fs.readFileSync(path.join(root, "test/fixtures/demo/demo_content_list.json"), "utf8"));
+const demoPath = path.join(root, "test/fixtures/demo/demo_content_list.json");
+if (!fs.existsSync(demoPath)) console.log("SKIP list: demo content list (test/fixtures/demo not present; run python3 test/build-fixture.py)");
+else await test("list: demo content list", () => {
+  const cl = JSON.parse(fs.readFileSync(demoPath, "utf8"));
   const figs = plain(F.list(cl));
   assert.deepEqual(figs.map((f) => f.id), ["fig_1", "fig_2", "tab_1", "tab_2", "tab_3", "tab_4", "fig_3", "fig_4", "fig_5"]);
   assert.equal(figs[0].label, "图 1");
