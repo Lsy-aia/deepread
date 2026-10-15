@@ -108,6 +108,38 @@
         ...common("outline"),
       });
 
+      paneIDs.questions = Zotero.ItemPaneManager.registerSection({
+        paneID: "deepread-questions",
+        header: { l10nID: "deepread-pane-questions-header", icon: icon("questions") },
+        sidenav: { l10nID: "deepread-pane-questions-sidenav", icon: icon("questions") },
+        sectionButtons: [{
+          type: "regenerate",
+          icon: "chrome://zotero/skin/16/universal/refresh.svg",
+          l10nID: "deepread-section-button-regenerate",
+          onClick: ({ body }) => {
+            const session = bodies.get(body)?.session;
+            session?.generateQuestions().catch((e) => DeepRead.Panes.reportError(session, e));
+          },
+        }],
+        ...common("questions"),
+      });
+
+      paneIDs.glossary = Zotero.ItemPaneManager.registerSection({
+        paneID: "deepread-glossary",
+        header: { l10nID: "deepread-pane-glossary-header", icon: icon("glossary") },
+        sidenav: { l10nID: "deepread-pane-glossary-sidenav", icon: icon("glossary") },
+        sectionButtons: [{
+          type: "regenerate",
+          icon: "chrome://zotero/skin/16/universal/refresh.svg",
+          l10nID: "deepread-section-button-regenerate",
+          onClick: ({ body }) => {
+            const session = bodies.get(body)?.session;
+            session?.buildGlossary().catch((e) => DeepRead.Panes.reportError(session, e));
+          },
+        }],
+        ...common("glossary"),
+      });
+
       paneIDs.flashcards = Zotero.ItemPaneManager.registerSection({
         paneID: "deepread-flashcards",
         header: { l10nID: "deepread-pane-flashcards-header", icon: icon("flashcards") },

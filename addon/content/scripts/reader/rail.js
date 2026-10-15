@@ -138,6 +138,10 @@
 .deepread-rail .dr-role-result { background: #e0f1ee; color: #0b5550; }
 .deepread-rail .dr-role-limitation { background: #f8e6e6; color: #8a1c1c; }
 .deepread-rail .dr-imp { flex-shrink: 0; align-self: flex-start; margin-top: 0.5em; width: 7px; height: 7px; border-radius: 50%; }
+.deepread-rail .dr-q { flex-shrink: 0; align-self: flex-start; margin-top: 0.12em; padding: 0 5px; border-radius: 4px; font-size: 0.75em;
+  font-weight: 700; line-height: 1.6; background: #ede9fe; color: #5b21b6; cursor: pointer; }
+.deepread-rail .dr-q:hover { background: #ddd6fe; }
+:root[data-color-scheme="dark"] .deepread-rail .dr-q { background: rgba(139,92,246,0.25); color: #ddd6fe; }
 .deepread-rail .dr-range { flex-shrink: 0; align-self: flex-start; margin-top: 0.15em; padding: 0 5px; border-radius: 8px;
   font-size: 0.75em; line-height: 1.6; color: var(--fill-secondary, #57606a); border: 1px solid rgba(0,0,0,0.12); }
 .deepread-rail .dr-trbody > .dr-trpart + .dr-trpart { margin-top: 0.45em; }
@@ -796,7 +800,9 @@
       const keys = paras.map((p) => `p_${p.pageIndex}_${p.paragraphIndex}`);
       const levels = paras.flatMap((p) => p.points || []).map((pt) => this.session.pointLevel(pt)).join("");
       const attached = keys.flatMap((k) => this.session.flashcardsForParagraph(k)).map((c) => this._cardSignature(c)).join("||");
-      return `p|${keys.join(",")}|${this.session.groupTitle(item.key)}|${this.session.highlightColors().join("")}`
+      const skim = this.session.skimDepth === "full" ? "" : `${this.session.skimDepth}:${this.session.skimTiers().tier.get(item.key) || ""}`;
+      const questions = (this.session.questionsForKey?.(item.key) || []).map((q) => q.id).join(",");
+      return `p|${keys.join(",")}|${this.session.groupTitle(item.key)}|${this.session.highlightColors().join("")}|${skim}|${questions}`
         + `|${paras.map((p) => this.session.paragraphSummary(p)).join("|")}|${levels}|${this.isOpen(item.key)}|${this.focusKey === item.key}|${this._translationOpen(item.key)}`
         + `|${this.session.explanation(item.key)}|${this.session.isExplaining(item.key)}|${this.session.paragraphRole?.(item.key)}`
         + `|${this.compactPages?.has(`${item.side || "right"}:${item.pageIndex}`) ? "c" : ""}`
@@ -859,7 +865,10 @@
       node.classList.toggle("dr-expanded", this.isOpen(key));
       node.classList.toggle("dr-open", this.focusKey === key);
       const side = this._sideOfKey?.get(key) || "right";
-      node.classList.toggle("dr-compact", !!this.compactPages?.has(`${side}:${paragraph.pageIndex}`) && !this.isOpen(key));
+      // Skim layers fold minor cards (every card in "margin only") to their one-line summary.
+      const depth = session.skimDepth;
+      const skimFold = depth === "margin" || (depth === "key" && session.skimTiers().tier.get(key) === "minor");
+      node.classList.toggle("dr-compact", (skimFold || !!this.compactPages?.has(`${side}:${paragraph.pageIndex}`)) && !this.isOpen(key));
       node.classList.add("dr-para");
       const role = session.paragraphRole?.(key) || "";
       node.dataset.role = role;
@@ -913,6 +922,16 @@
       });
       summary.addEventListener("blur", () => finish(true));
       head.append(summary);
+      // Reading questions this card helps answer.
+      for (const q of session.questionsForKey?.(key) || []) {
+        const pill = el(doc, "span", "dr-q", session.questionLabel(q));
+        pill.title = q.question;
+        pill.addEventListener("click", (e) => {
+          e.stopPropagation();
+          DeepRead.Panes?.reveal(session.reader, "questions");
+        });
+        head.append(pill);
+      }
       if (members) {
         const range = el(doc, "span", "dr-range", DeepRead.bilingual(`${paras.length} 段`, `${paras.length} ¶`));
         range.title = session.groupLabel(key);

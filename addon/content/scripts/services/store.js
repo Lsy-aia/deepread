@@ -12,7 +12,7 @@ DeepRead.Store = {
   SCHEMA_VERSION: 1,
   db: null,
 
-  JSON_FIELDS: ["hierarchical_data", "article_summary", "block_mapping", "sections", "user_state", "content_list", "explanations", "figure_guides"],
+  JSON_FIELDS: ["hierarchical_data", "article_summary", "block_mapping", "sections", "user_state", "content_list", "explanations", "figure_guides", "questions", "glossary"],
   TEXT_FIELDS: ["result_dir", "language", "markdown", "github_url"],
 
   async init() {
@@ -42,22 +42,15 @@ DeepRead.Store = {
       user_state TEXT,
       explanations TEXT,
       figure_guides TEXT,
+      questions TEXT,
+      glossary TEXT,
       created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
       updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
     )`);
-    // Migrate databases created before the `explanations` column existed.
-    const hasColumn = await this.db.valueQueryAsync(
-      "SELECT COUNT(*) FROM pragma_table_info('papers') WHERE name = 'explanations'"
-    );
-    if (!Number(hasColumn)) {
-      await this.db.queryAsync("ALTER TABLE papers ADD COLUMN explanations TEXT");
-    }
-    // Migrate databases created before the `figure_guides` column existed.
-    const hasGuides = await this.db.valueQueryAsync(
-      "SELECT COUNT(*) FROM pragma_table_info('papers') WHERE name = 'figure_guides'"
-    );
-    if (!Number(hasGuides)) {
-      await this.db.queryAsync("ALTER TABLE papers ADD COLUMN figure_guides TEXT");
+    // Migrate databases created before these columns existed.
+    for (const column of ["explanations", "figure_guides", "questions", "glossary"]) {
+      const has = await this.db.valueQueryAsync(`SELECT COUNT(*) FROM pragma_table_info('papers') WHERE name = '${column}'`);
+      if (!Number(has)) await this.db.queryAsync(`ALTER TABLE papers ADD COLUMN ${column} TEXT`);
     }
     await this.db.queryAsync(`CREATE TABLE IF NOT EXISTS chats (
       attachment_key TEXT PRIMARY KEY,

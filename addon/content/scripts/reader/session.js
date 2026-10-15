@@ -150,6 +150,8 @@
       this.rail = DeepRead.Rail ? new DeepRead.Rail(this) : null;
       this.structureBar = DeepRead.StructureBar ? new DeepRead.StructureBar(this) : null;
       this.figureGuides = {}; // figure id → { title, steps: [{ text, panel }] }
+      this.questions = null; // { items: [{ id, question, answer, keys, custom?, at }], at } — question-led reading
+      this.glossary = null; // { symbols, terms, at } — hover lookup
       this.editingFlashcard = null;
       this.flipped = new Set();
       // paragraph key → { text, role, at, members?, title? }: the "AI 讲解" shown as the card body. A card that
@@ -159,7 +161,13 @@
       this.explaining = new Set(); // keys being generated
       this._explainAbort = null;
       this.on((event) => {
-        if (event === "change" || event === "flashcards" || event === "explanations" || event === "figures") this.rail?.refresh();
+        if (event === "change" || event === "explanations") this._skim = null;
+        if (event === "change" || event === "flashcards" || event === "explanations" || event === "figures" || event === "questions") this.rail?.refresh();
+        if (event === "questions" || event === "skim") this.structureBar?.refresh();
+        if (event === "skim" || (event === "explanations" && this.skimDepth !== "full")) {
+          this.overlay.renderAllPages();
+          this.rail?.refresh();
+        }
         if (event === "change") this.structureBar?.refresh();
         if (event === "change") for (const card of this.flashcards || []) delete card._autoKey;
       });
@@ -235,6 +243,8 @@
         this.userState = { pointImportance: {}, ...(stored.user_state || {}) };
         this.explanations = stored.explanations || {};
         this.figureGuides = stored.figure_guides || {};
+        this.questions = stored.questions || null;
+        this.glossary = stored.glossary || null;
         this.status = "ready";
       }
       else {
@@ -245,6 +255,10 @@
       if (this.data) this.overlay.setData(this.data.hierarchicalData);
       this.rail?.attach(view);
       this.structureBar?.attach(view);
+      this.lookup = DeepRead.Lookup ? new DeepRead.Lookup(this) : null;
+      this.lookup?.attach(view);
+      // Papers read before v0.9: write the questions / glossary once, in the background.
+      if (this.data) this._autoGenerate();
       // Highlighter colours change the PDF highlights and the cards' key points.
       this._prefObservers = [Zotero.Prefs.registerObserver("deepread.highlight.colors", () => {
         this.overlay.renderAllPages();
@@ -255,6 +269,9 @@
     }
 
     destroy() {
+      this._questionsAbort?.abort();
+      this._glossaryAbort?.abort();
+      this.lookup?.detach();
       for (const id of this._prefObservers || []) Zotero.Prefs.unregisterObserver(id);
       this._prefObservers = [];
       this.cancel();
@@ -438,6 +455,14 @@
         this.explaining.clear();
         this.figureGuides = {};
         this._figuresRequested = false;
+        this._questionsAbort?.abort();
+        this._glossaryAbort?.abort();
+        this.questions = null;
+        this.glossary = null;
+        this._questionsRequested = false;
+        this._glossaryRequested = false;
+        this._refs = null;
+        this._skim = null;
         this.overlay.setData(data.hierarchicalData);
         this.status = "ready";
         this.progress = { percent: 100, message: DeepRead.t("flow.done") };
@@ -446,6 +471,7 @@
         if (DeepRead.prefs.get("cards.autoExplain") !== false) {
           this.explainAll().catch((e) => DeepRead.log("explanations failed", String(e)));
         }
+        this._autoGenerate({ afterRun: true });
         if (DeepRead.Modules.enabled(this, "figureCards")) {
           this.explainFigures().catch((e) => DeepRead.log("figure guides failed", String(e)));
         }
@@ -547,6 +573,14 @@
       this.cancel();
       this._explainAbort?.abort();
       this._figureAbort?.abort();
+      this._questionsAbort?.abort();
+      this._glossaryAbort?.abort();
+      this.questions = null;
+      this.glossary = null;
+      this._questionsRequested = false;
+      this._glossaryRequested = false;
+      this._refs = null;
+      this._skim = null;
       this.figureGuides = {};
       this._figuresRequested = false;
       this.explanations = {};
@@ -569,8 +603,10 @@
         translationPopup: M.enabled(this, "hoverTranslation"),
       });
       if (refresh) {
+        this.overlay.renderAllPages?.(); // skim layers
         this.rail?.refresh();
         this.structureBar?.refresh();
+        this._autoGenerate(); // a module just switched on may need its questions / glossary
       }
       this._emit("modules");
     }
@@ -627,6 +663,225 @@
         this._explainingFigures = false;
         this._emit("figures");
       }
+    }
+
+    /* ---------- v0.9: questions, glossary, references, skim ---------- */
+
+    /**
+     * After a deep read (or when an older paper is opened): questions need the explanations, so they wait for
+     * them; the glossary only needs the paragraphs. Each runs once per session unless forced.
+     */
+    _autoGenerate({ afterRun = false } = {}) {
+      if (!this.hasResults || !DeepRead.LLM.isConfigured()) return;
+      if (DeepRead.Modules.enabled(this, "lookup") && !this.glossary && !this._glossaryRequested) {
+        this._glossaryRequested = true;
+        this.buildGlossary().catch((e) => DeepRead.log("glossary failed", String(e)));
+      }
+      if (DeepRead.Modules.enabled(this, "questions") && !this.questions?.items?.length && !this._questionsRequested) {
+        this._questionsRequested = true;
+        const start = () => this.generateQuestions().catch((e) => DeepRead.log("questions failed", String(e)));
+        if (afterRun || this.explaining.size) {
+          // Let the explanations (roles, merged cards) land first; give up waiting after 3 minutes.
+          const begun = Date.now();
+          const wait = () => {
+            if (!this.hasResults) return;
+            if (this.explaining.size && Date.now() - begun < 180000) setTimeout(wait, 1500);
+            else start();
+          };
+          setTimeout(wait, 1500);
+        }
+        else start();
+      }
+    }
+
+    /** Paragraph cards as "blocks" for the questions / glossary prompts. */
+    blocks() {
+      const out = [];
+      for (const page of this.data?.hierarchicalData || []) {
+        for (const paragraph of page.paragraphs || []) {
+          if (!String(paragraph.paragraphType || "text").startsWith("text") && paragraph.paragraphType !== "list") continue;
+          const key = `p_${page.pageIndex}_${paragraph.paragraphIndex}`;
+          out.push({
+            key,
+            label: `p. ${page.pageIndex + 1} ¶${paragraph.paragraphIndex + 1}`,
+            summary: this.paragraphSummary({ ...paragraph, pageIndex: page.pageIndex }),
+            explanation: this.explanation(key),
+            role: this.paragraphRole(key),
+            text: paragraph.paragraphText || "",
+          });
+        }
+      }
+      return out;
+    }
+
+    _saveSoon(field) {
+      this._saveTimers = this._saveTimers || {};
+      clearTimeout(this._saveTimers[field]);
+      this._saveTimers[field] = setTimeout(() => {
+        DeepRead.Store.savePaper(this.key, this.item.id, { [field]: this[field] })
+          .catch((e) => DeepRead.log(`saving ${field} failed`, String(e)));
+      }, 400);
+    }
+
+    get generatingQuestions() {
+      return !!this._questionsBusy;
+    }
+
+    /** The five reading questions (the reader's own questions are kept). */
+    async generateQuestions() {
+      if (!this.hasResults || this._questionsBusy) return null;
+      if (!DeepRead.LLM.isConfigured()) throw Object.assign(new Error(DeepRead.t("error.noLLM")), { configError: true });
+      const controller = new AbortController();
+      this._questionsAbort = controller;
+      this._questionsBusy = true;
+      this._emit("questions");
+      try {
+        const items = await DeepRead.Questions.generate({
+          blocks: this.blocks(),
+          paperContext: this.paperContext(),
+          targetLang: DeepRead.prefs.language(),
+          signal: controller.signal,
+        });
+        const custom = (this.questions?.items || []).filter((q) => q.custom);
+        const at = Date.now();
+        this.questions = { items: [...items.map((q) => ({ ...q, at })), ...custom], at };
+        this._saveSoon("questions");
+        return this.questions;
+      }
+      finally {
+        this._questionsBusy = false;
+        this._emit("questions");
+      }
+    }
+
+    /** A question of the reader's own, answered from the paper's blocks. */
+    async askQuestion(question) {
+      const text = String(question || "").trim();
+      if (!text || !this.hasResults) return null;
+      if (!DeepRead.LLM.isConfigured()) throw Object.assign(new Error(DeepRead.t("error.noLLM")), { configError: true });
+      const item = { id: `u${Date.now().toString(36)}`, question: text, answer: "", keys: [], custom: true, pending: true, at: Date.now() };
+      this.questions = { items: [...(this.questions?.items || []), item], at: this.questions?.at || Date.now() };
+      this._emit("questions");
+      try {
+        const { answer, keys } = await DeepRead.Questions.ask(text, {
+          blocks: this.blocks(),
+          paperContext: this.paperContext(),
+          targetLang: DeepRead.prefs.language(),
+        });
+        Object.assign(item, { answer, keys });
+        return item;
+      }
+      catch (e) {
+        this.questions.items = this.questions.items.filter((q) => q !== item);
+        throw e;
+      }
+      finally {
+        delete item.pending;
+        this._saveSoon("questions");
+        this._emit("questions");
+      }
+    }
+
+    removeQuestion(id) {
+      if (!this.questions) return;
+      this.questions.items = this.questions.items.filter((q) => q.id !== id);
+      this._saveSoon("questions");
+      this._emit("questions");
+    }
+
+    /** Questions answered (in part) by a card's paragraphs. */
+    questionsForKey(key) {
+      const members = new Set(this.groupMembers(key));
+      return (this.questions?.items || []).filter((q) => (q.keys || []).some((k) => members.has(this.groupLead(k)) || members.has(k)));
+    }
+
+    questionLabel(q) {
+      const items = this.questions?.items || [];
+      if (!q.custom) return q.id.toUpperCase();
+      return `Q${items.filter((x) => !x.custom).length + items.filter((x) => x.custom).indexOf(q) + 1}`;
+    }
+
+    /** Position (page index + fraction) of a paragraph's top, or null. */
+    keyPosition(key) {
+      const found = this._paragraphByKey(key);
+      if (!found) return null;
+      const rect = found.paragraph.bbox;
+      const geom = rect && this.overlay._geometry?.(found.page.pageIndex);
+      const top = geom ? this.overlay._toPercent(geom, rect).top / 100 : 0.5;
+      return found.page.pageIndex + Math.max(0, Math.min(0.99, top));
+    }
+
+    /** A question counts as reached once the reader has read past all of its answer's paragraphs. */
+    questionReached(q) {
+      const positions = (q.keys || []).map((k) => this.keyPosition(k)).filter((p) => p !== null);
+      if (!positions.length) return false;
+      return (this.userState.readUpTo || 0) >= Math.max(...positions);
+    }
+
+    questionProgress() {
+      const items = (this.questions?.items || []).filter((q) => !q.pending);
+      return { reached: items.filter((q) => this.questionReached(q)).length, total: items.length };
+    }
+
+    get buildingGlossary() {
+      return !!this._glossaryBusy;
+    }
+
+    async buildGlossary() {
+      if (!this.hasResults || this._glossaryBusy) return null;
+      if (!DeepRead.LLM.isConfigured()) throw Object.assign(new Error(DeepRead.t("error.noLLM")), { configError: true });
+      const controller = new AbortController();
+      this._glossaryAbort = controller;
+      this._glossaryBusy = true;
+      this._emit("glossary");
+      try {
+        const glossary = await DeepRead.Glossary.build({
+          blocks: this.blocks(),
+          paperContext: this.paperContext(),
+          targetLang: DeepRead.prefs.language(),
+          signal: controller.signal,
+        });
+        this.glossary = { ...glossary, at: Date.now() };
+        this._saveSoon("glossary");
+        return this.glossary;
+      }
+      finally {
+        this._glossaryBusy = false;
+        this._emit("glossary");
+      }
+    }
+
+    /** Reference list and in-text citation counts, parsed once from the content list. */
+    references() {
+      if (!this._refs) {
+        const contentList = this.data?.contentList || [];
+        const list = DeepRead.References ? DeepRead.References.list(contentList) : [];
+        this._refs = { list, occurrences: list.length ? DeepRead.References.occurrences(contentList, list) : new Map() };
+      }
+      return this._refs;
+    }
+
+    /** Reading depth of the skim layers: "full" | "key" | "margin" (per paper, default from the settings). */
+    get skimDepth() {
+      if (!DeepRead.Modules.enabled(this, "skim")) return "full";
+      const depth = this.userState.skimDepth || DeepRead.prefs.get("skim.depth") || "full";
+      return ["full", "key", "margin"].includes(depth) ? depth : "full";
+    }
+
+    setSkimDepth(depth) {
+      this.userState.skimDepth = depth;
+      this._saveUserStateSoon();
+      this._emit("skim");
+    }
+
+    /** { tier: Map(key → key|normal|minor), keyPoints: Set(point ids) }, cached until the results change. */
+    skimTiers() {
+      if (!this._skim) {
+        this._skim = DeepRead.Skim.tiers(this.data?.hierarchicalData || [], {
+          role: (key) => this.paragraphRole(key) || this.paragraphRole(this.groupLead(key)),
+        });
+      }
+      return this._skim;
     }
 
     /* ---------- AI explanations (card bodies) ---------- */

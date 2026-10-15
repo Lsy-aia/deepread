@@ -30,6 +30,9 @@
 .deepread-layer .dr-rect { position: absolute; border-radius: 2px; mix-blend-mode: multiply; }
 .deepread-layer .dr-outline { position: absolute; border-radius: 4px;
   box-shadow: 0 0 0 1.5px rgba(251, 191, 36, 0.85); background: rgba(251, 191, 36, 0.06); }
+.deepread-layer .dr-dim { position: absolute; background: rgba(255, 255, 255, 0.6); border-radius: 2px; }
+.deepread-layer .dr-dim.dr-dim-strong { background: rgba(255, 255, 255, 0.78); }
+.deepread-layer .dr-keyline { position: absolute; border-bottom: 2px solid rgba(217, 119, 6, 0.8); }
 .deepread-layer .dr-translation { position: absolute; box-sizing: content-box; padding: 3px 5px;
   margin-left: -6px; background: #fffef9; color: #111; border-radius: 4px;
   border: 1px solid rgba(251, 191, 36, 0.7); box-shadow: 0 3px 12px rgba(0, 0, 0, 0.16);
@@ -398,6 +401,25 @@
             if (!color) continue;
             for (const rect of point.rects || []) {
               this._addRect(ctx.persistent, ctx.geom, rect, "dr-rect", color);
+            }
+          }
+        }
+      }
+      // Skim layers: fade minor paragraphs (all text in "margin only"), underline key sentences.
+      const depth = this.session.skimDepth;
+      if (depth && depth !== "full" && this.session.hasResults) {
+        const { tier, keyPoints } = this.session.skimTiers();
+        for (const paragraph of paragraphs) {
+          const t = tier.get(`p_${pageIndex}_${paragraph.paragraphIndex}`);
+          if (!t || !paragraph.bbox) continue;
+          if (depth === "margin" || t === "minor") {
+            const [x1, y1, x2, y2] = paragraph.bbox;
+            this._addRect(ctx.persistent, ctx.geom, [x1 - 2, y1 - 2, x2 + 2, y2 + 2], depth === "margin" ? "dr-dim dr-dim-strong" : "dr-dim");
+          }
+          else if (t === "key") {
+            for (const point of paragraph.points || []) {
+              if (!keyPoints.has(point.id)) continue;
+              for (const rect of point.rects || []) this._addRect(ctx.persistent, ctx.geom, rect, "dr-keyline");
             }
           }
         }

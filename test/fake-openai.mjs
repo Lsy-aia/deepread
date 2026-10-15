@@ -23,6 +23,9 @@ function lastUserText(messages) {
 
 function detect(t) {
   if (/Figures to explain \(JSON\):/.test(t)) return 'figures';
+  if (/Paper blocks for the glossary \(JSON\):/.test(t)) return 'glossary';
+  if (/Question to answer:/.test(t) && /Paper blocks \(JSON\):/.test(t)) return 'ask';
+  if (/Paper blocks \(JSON\):/.test(t)) return 'questions';
   if (/Paragraphs to explain \(JSON\):/.test(t)) return 'explain';
   if (/article_summary field|包含 article_summary 字段/.test(t)) return 'article_summary';
   if (/outline field|包含 outline 字段/.test(t)) return 'outline';
@@ -185,6 +188,48 @@ function buildExplain(t) {
   return { obj: { explanations }, info: `items=${items.length}` };
 }
 
+// ---- question-led reading, free questions, glossary ----
+function requestBlocks(t) {
+  const m = /Paper blocks(?: for the glossary)? \(JSON\):\s*(\{.*\})/.exec(t);
+  try { return JSON.parse(m[1]).blocks || []; } catch { return []; }
+}
+
+function buildQuestions(t) {
+  const keys = requestBlocks(t).map((b) => String(b.key));
+  const std = ['这篇论文要解决什么问题？', '方法的核心是什么？', '关键设计有哪些？', '证据是否充分？', '局限是什么？'];
+  const questions = std.map((q, i) => ({
+    id: 'q' + (i + 1),
+    question: q,
+    answer: `（fake）针对“${q}”：作者给出了清晰的论述，详见相关段落。**自注意力** 是其中的关键。`,
+    keys: keys.length ? [...new Set([keys[i % keys.length], keys[(i + 1) % keys.length]])].slice(0, i % 2 + 1) : [],
+  }));
+  return { obj: { questions }, info: `blocks=${keys.length}` };
+}
+
+function buildAsk(t) {
+  const keys = requestBlocks(t).map((b) => String(b.key));
+  return { obj: { answer: '（fake）论文在相关段落中回答了这个问题：核心思路是用注意力替代循环结构。', keys: keys.slice(0, 2) }, info: `blocks=${keys.length}` };
+}
+
+function buildGlossary(t) {
+  const keys = requestBlocks(t).map((b) => String(b.key));
+  const k = (i) => keys[Math.min(i, keys.length - 1)] || '';
+  return {
+    obj: {
+      symbols: [
+        { symbol: 'd_k', forms: ['dk', 'd_k'], meaning: '键向量的维度，用于缩放点积。', key: k(0) },
+        { symbol: 'QK^T', forms: ['QKT', 'QK^T'], meaning: '查询与键的点积矩阵。', key: k(1) },
+      ],
+      terms: [
+        { term: 'self-attention', aliases: ['intra-attention'], definition: '序列内每个位置都与其他位置计算相关性的注意力机制。', key: k(0) },
+        { term: 'Transformer', aliases: [], definition: '完全基于注意力的序列转换模型架构。', key: k(1) },
+        { term: 'multi-head attention', aliases: [], definition: '并行运行多组注意力并拼接结果。', key: k(2) },
+      ],
+    },
+    info: `blocks=${keys.length}`,
+  };
+}
+
 // ---- author filter: keep everything ----
 function buildFilter() { return { obj: { indices: [] }, info: 'keep all' }; }
 
@@ -227,7 +272,7 @@ http.createServer(async (req, res) => {
       content = JSON.stringify({ question: '这段话为什么重要？(fake)', answer: '因为它提出了 **注意力** 机制，复杂度为 $O(n^2)$。(fake)' });
     }
     else {
-      const r = { page: buildPage, article_summary: buildArticle, outline: buildOutline, filter: buildFilter, explain: buildExplain, figures: buildFigures }[kind](text);
+      const r = { page: buildPage, article_summary: buildArticle, outline: buildOutline, filter: buildFilter, explain: buildExplain, figures: buildFigures, questions: buildQuestions, ask: buildAsk, glossary: buildGlossary }[kind](text);
       content = JSON.stringify(r.obj);
       info = r.info;
     }

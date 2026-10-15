@@ -16,6 +16,8 @@
 .deepread-toolbar .dr-run .dr-run-progress { position: absolute; left: 0; bottom: 0; height: 2px; background: #3b82f6; transition: width .3s; }
 .deepread-toolbar .dr-run.dr-ready::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
 .deepread-toolbar .dr-menu-button { width: auto; padding: 0 7px; gap: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.deepread-toolbar .dr-questions-button { width: auto; padding: 0 7px; font-size: 12px; font-weight: 600; white-space: nowrap; color: #6d28d9; }
+.deepread-toolbar .dr-questions-button[hidden] { display: none; }
 .deepread-toolbar .dr-menu-button .dr-count { font-weight: 400; opacity: 0.7; font-size: 11px; }
 .deepread-menu { position: fixed; z-index: 2147483001; min-width: 220px; padding: 4px; border-radius: 8px;
   background: var(--material-toolbar, #fff); color: var(--fill-primary, #222); border: 1px solid rgba(0,0,0,0.12);
@@ -348,7 +350,22 @@
       const { on, total } = DeepRead.Modules.count(session);
       count.textContent = `${on}/${total}`;
     };
-    const container = h(doc, "div", { class: "deepread-toolbar" }, runButton, menuButton);
+    // Question-led reading: how many answers the reader has reached; opens the questions section.
+    const questionsButton = h(doc, "button", {
+      class: "toolbar-button dr-questions-button",
+      title: DeepRead.bilingual("阅读问题：已读到答案的问题数", "Reading questions: answers reached"),
+      onclick: () => DeepRead.Panes?.reveal(reader, "questions"),
+    });
+    const updateQuestions = () => {
+      const on = DeepRead.Modules.enabled(session, "questions") && session.hasResults;
+      questionsButton.hidden = !on;
+      if (!on) return;
+      const { reached, total } = session.questionProgress();
+      questionsButton.textContent = session.generatingQuestions && !total
+        ? DeepRead.bilingual("问题…", "Questions…")
+        : `${DeepRead.bilingual("问题", "Questions")} ${reached}/${total || 5}`;
+    };
+    const container = h(doc, "div", { class: "deepread-toolbar" }, runButton, questionsButton, menuButton);
 
     const update = () => {
       const running = session.status === "running";
@@ -372,9 +389,11 @@
       }
       if (type === "change" || type === "progress") update();
       if (type === "modules" || type === "change") updateCount();
+      if (type === "modules" || type === "change" || type === "questions") updateQuestions();
     });
     update();
     updateCount();
+    updateQuestions();
     append(container);
     session.init().then(update);
   }

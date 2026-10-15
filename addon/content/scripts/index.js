@@ -22,6 +22,10 @@
     "services/explainer.js",
     "services/structure.js",
     "services/figures.js",
+    "services/references.js",
+    "services/questions.js",
+    "services/glossary.js",
+    "services/skim.js",
     "services/github.js",
     "services/deepwiki.js",
     "pipeline/languages.js",
@@ -32,6 +36,7 @@
     "reader/overlay.js",
     "reader/rail.js",
     "reader/structureBar.js",
+    "reader/lookup.js",
     "reader/session.js",
     "reader/toolbar.js",
     "reader/selection.js",
@@ -41,6 +46,7 @@
     "panes/chatPane.js",
     "panes/flashcardPane.js",
     "panes/codePane.js",
+    "panes/questionsPane.js",
   ];
 
   // Core modules must load; optional feature modules only log on failure.

@@ -323,3 +323,38 @@ v0.4–v0.5 (ReadFlow client, built-in full-document translation, translated-PDF
   rows of panels chain); leftover clusters try a nearby caption text block; unused caption text blocks become
   `captionOnly` figures (no thumbnail). Cards carry `data-kind` figure (amber) / table (teal).
 - e2e: `test/e2e/v081.js` (needs `E2E_PARSER=builtin E2E_PDF2=<two-column pdf>`).
+
+## v0.9: skim layers, hover lookup, question-led reading
+
+Three more entries in `DeepRead.Modules.LIST` (prefs `view.skim`, `view.lookup`, `view.questions`).
+
+- **Skim** (`services/skim.js`, pure): `Skim.tiers(hierarchicalData, { role })` → `{ tier: Map(key → key|normal|minor),
+  keyPoints }` from the paragraph role (weights in `ROLE_WEIGHT`, no role = neutral) plus the LLM point importance
+  bonus; references / acknowledgements are minor; titles, equations, figures get no tier. `readingTime(paragraphs,
+  { tier, mode })`, `nextKey/prevKey(entries, from)`. Session: `skimDepth` (per paper in `userState.skimDepth`, default
+  pref `skim.depth`), `setSkimDepth()` (emits "skim"), `skimTiers()` (cached until change / explanations).
+  Overlay `_renderPage` draws `.dr-dim` (minor; all text in margin mode, `.dr-dim-strong`) and `.dr-keyline` under the
+  key points; the rail folds minor cards (all in margin mode). The section strip hosts the depth switch, reading time
+  and "next key" (`structureBar.goKey(±1)`, keys N / Shift+N in the PDF window); the strip shows when either the
+  section bar or skim is on.
+- **Lookup** (`reader/lookup.js`, `services/references.js`, `services/glossary.js`): `DeepRead.Lookup` per session
+  listens to pointermove in the PDF window, after a 280 ms dwell reads the page's chars
+  (`pdfDocument.getPageData` → `{ u, rect, spaceAfter, lineBreakAfter }`), rebuilds the line under the pointer
+  (`Lookup.lineAt`) and classifies the text at the offset (`find`): citation (`References.citationAt` + `resolve`
+  against `session.references()`), figure/table reference (→ `session.figures()`), term (`Glossary.termAt`), symbol
+  (`Glossary.matchSymbol` on the non-space run). Popover `.deepread-lookup` in the reader document; library match
+  via `Lookup.findInLibrary(ref)` (DOI, then title) with "open" → best attachment. `References.list(contentList)` reads
+  `ref_text` items (new MinerU) or the text after the References heading (split on "[n]" / numbered starts).
+  Glossary: one request after the deep read (`session.buildGlossary()`, column `papers.glossary`).
+- **Questions** (`services/questions.js`, `panes/questionsPane.js`): `Questions.generate({ blocks, … })` answers the
+  five standard questions with block keys; `ask(question, …)` for the reader's own. Session: `questions = { items:
+  [{ id, question, answer, keys, custom? }] }` (column `papers.questions`), `generateQuestions()` (waits for the
+  explanations after a run), `askQuestion()`, `removeQuestion()`, `questionsForKey(key)` (card badges `.dr-q`),
+  `questionReached(q)` (all answer paragraphs above `userState.readUpTo`), `questionProgress()`. The strip draws
+  `.dr-qmark` per question; the toolbar shows `.dr-questions-button` ("问题 n/m", opens the section). The strip keeps
+  tracking `readUpTo` even when it is hidden, while the questions module is on, and emits "questions" when the
+  reached count changes. Pref `questions.hideAnswers` hides answers until reached.
+- `session._autoGenerate()` writes the glossary / questions once per session for papers read before v0.9 and after
+  every deep read (flags reset by `run()` / `clearResults()`); `blocks()` is the shared prompt input.
+- Store: columns `questions`, `glossary` (migration loop in `Store.init`).
+- e2e: `test/e2e/v09.js` (`E2E_PARSER=builtin`, so the demo paper's references are parsed from the PDF).

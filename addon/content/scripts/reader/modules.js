@@ -13,6 +13,9 @@ DeepRead.Modules = {
     { key: "highlights", pref: "view.highlights", zh: "要点高亮", en: "Key-point highlights", hintZh: "重要 / 关键要点在原文中着色", hintEn: "Colour important points in the PDF" },
     { key: "structureBar", pref: "view.structureBar", zh: "全文结构条", en: "Section bar", hintZh: "工具栏下的章节横条", hintEn: "Section strip under the toolbar" },
     { key: "figureCards", pref: "view.figureCards", zh: "图表卡片", en: "Figure cards", hintZh: "图表成卡，附读图步骤", hintEn: "Figures as cards with reading steps" },
+    { key: "skim", pref: "view.skim", zh: "速读分层", en: "Skim layers", hintZh: "阅读深度：全文 / 重点 / 只看边注", hintEn: "Reading depth: full / key / margin only" },
+    { key: "lookup", pref: "view.lookup", zh: "悬停查证", en: "Hover lookup", hintZh: "引用、图表引用、术语和符号", hintEn: "Citations, figure refs, terms and symbols" },
+    { key: "questions", pref: "view.questions", zh: "问题导向", en: "Question-led reading", hintZh: "5 个阅读问题，答案挂到卡片和结构条", hintEn: "Five reading questions, answers on cards and the section bar" },
   ],
 
   get(key) {
