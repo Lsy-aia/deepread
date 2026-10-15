@@ -3,6 +3,17 @@
     "deepread@lsy-aia.github.io": {
       "updates": [
         {
+          "version": "0.9.0",
+          "update_link": "https://github.com/Lsy-aia/deepread/releases/download/v0.9.0/deepread-0.9.0.xpi",
+          "update_hash": "sha256:17bd3f6042d6222b78c5f92d9b14c6eb4cd0f420255e238f0e7cda994c489c70",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "7.0",
+              "strict_max_version": "10.9.9"
+            }
+          }
+        },
+        {
           "version": "0.8.1",
           "update_link": "https://github.com/Lsy-aia/deepread/releases/download/v0.8.1/deepread-0.8.1.xpi",
           "update_hash": "sha256:e322a0783425cbdafe2c1ff138f7ad725db408150fabd3d6f5c69426d876b31c",
@@ -94,17 +105,6 @@
           "version": "0.3.2",
           "update_link": "https://github.com/Lsy-aia/deepread/releases/download/v0.3.2/deepread-0.3.2.xpi",
           "update_hash": "sha256:142a64a5332cd13910339d1c362d2c685abea763744ae77f73b9c4b45403514b",
-          "applications": {
-            "zotero": {
-              "strict_min_version": "7.0",
-              "strict_max_version": "10.9.9"
-            }
-          }
-        },
-        {
-          "version": "0.3.1",
-          "update_link": "https://github.com/Lsy-aia/deepread/releases/download/v0.3.1/deepread-0.3.1.xpi",
-          "update_hash": "sha256:744c105c05089a31be115d830a34071d1ac2112ad86e82476a3c44391bbceddc",
           "applications": {
             "zotero": {
               "strict_min_version": "7.0",
