@@ -40,6 +40,23 @@ DeepRead.prefs = {
     };
   },
 
+  /** Saved provider profiles (read-only; the runtime itself reads the flat llm.* prefs). */
+  profiles() {
+    try {
+      const list = JSON.parse(String(this.get("llm.profiles") || "[]"));
+      return Array.isArray(list) ? list.filter((p) => p && typeof p === "object" && p.id) : [];
+    }
+    catch (e) {
+      return [];
+    }
+  },
+
+  activeProfile() {
+    const id = String(this.get("llm.activeProfile") || "");
+    const list = this.profiles();
+    return list.find((p) => p.id === id) || null;
+  },
+
   parserConfig() {
     return {
       provider: this.get("parser.provider") || "builtin",

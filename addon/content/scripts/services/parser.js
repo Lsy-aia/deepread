@@ -78,17 +78,25 @@ DeepRead.Parser = {
     await this._emptyDir(resultDir);
 
     const ctx = { cfg, filePath, attachmentKey, resultDir, status, signal };
-    if (cfg.provider === "builtin" || cfg.provider === "grobid") {
-      return await this._parseToContentList(ctx, pdfApp);
+    if (cfg.provider === "builtin") return await this._parseToContentList(ctx, pdfApp);
+    try {
+      if (cfg.provider === "grobid") return await this._parseToContentList(ctx, pdfApp);
+      if (cfg.provider === "selfhost") await this._selfhostParse(ctx);
+      else await this._mineruParse(ctx);
+      status("extract", DeepRead.bilingual("读取解析结果…", "Reading parse results…"));
+      return await this._loadResults(resultDir);
     }
-    if (cfg.provider === "selfhost") {
-      await this._selfhostParse(ctx);
+    catch (error) {
+      // A service that is down or out of quota should not block reading: fall back to the PDF's
+      // own text layer (needs the open reader's pdf.js; scanned PDFs still fail).
+      if (signal?.aborted || error?.name === "AbortError" || !pdfApp) throw error;
+      DeepRead.log("parser failed, falling back to the built-in text layer", String(error?.message || error));
+      status("fallback", DeepRead.bilingual(`解析服务失败（${error?.message || error}），改用内置文字层…`,
+        `Parser failed (${error?.message || error}); using the built-in text layer…`));
+      await this._emptyDir(resultDir);
+      const result = await this._parseToContentList({ ...ctx, cfg: { ...cfg, provider: "builtin" } }, pdfApp);
+      return { ...result, fallback: true };
     }
-    else {
-      await this._mineruParse(ctx);
-    }
-    status("extract", DeepRead.bilingual("读取解析结果…", "Reading parse results…"));
-    return await this._loadResults(resultDir);
   },
 
   async testConnection(config) {

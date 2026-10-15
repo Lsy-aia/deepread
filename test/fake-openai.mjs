@@ -22,6 +22,7 @@ function lastUserText(messages) {
 }
 
 function detect(t) {
+  if (/Figures to explain \(JSON\):/.test(t)) return 'figures';
   if (/Paragraphs to explain \(JSON\):/.test(t)) return 'explain';
   if (/article_summary field|包含 article_summary 字段/.test(t)) return 'article_summary';
   if (/outline field|包含 outline 字段/.test(t)) return 'outline';
@@ -136,6 +137,26 @@ function buildOutline(t) {
   return { obj: { outline: root }, info: `sections=${sections.length}` };
 }
 
+const ROLES = ['background', 'gap', 'prior', 'contribution', 'method', 'result', 'limitation'];
+function hash(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; }
+
+// ---- figure reading guides ----
+function buildFigures(t) {
+  const m = /Figures to explain \(JSON\):\s*(\{.*\})/.exec(t);
+  let figs = [];
+  try { figs = JSON.parse(m[1]).figures || []; } catch { /* keep empty */ }
+  const out = figs.map((f, i) => ({
+    id: String(f.id),
+    title: `${f.label || f.id}：阅读指南`,
+    steps: [
+      { text: `先看${f.label || '该图表'}的整体结构，对照图注弄清各部分分别表示什么。`, panel: null },
+      { text: i % 2 === 0 ? '再看 (b) 子图中的关键对比，注意 **趋势** 的变化。' : '再对比关键行与列，注意加粗的最优结果。', panel: i % 2 === 0 ? 'b' : null },
+      { text: '最后结合正文，理解这一结果支持了论文的哪个结论。', panel: null },
+    ],
+  }));
+  return { obj: { figures: out }, info: `figures=${figs.length}` };
+}
+
 // ---- paragraph explanations ("AI 讲解") ----
 function buildExplain(t) {
   const m = /Paragraphs to explain \(JSON\):\s*(\{.*\})/.exec(t);
@@ -145,7 +166,7 @@ function buildExplain(t) {
     const key = String(it.key);
     let text = `这一段（${key}）讲的是作者如何用更直接的方式解决前文提到的问题。可以把它理解为整篇论文论证链条中的一环，后面的实验正是为了验证这里的说法。`;
     if (/_2$/.test(key)) text += ` 其中的 **自注意力** 需要对每一对位置计算一次，因此复杂度为 $O(n^2)$。`;
-    return { key, explanation: text };
+    return { key, explanation: text, role: ROLES[hash(key) % 7] };
   });
   return { obj: { explanations }, info: `items=${items.length}` };
 }
@@ -192,7 +213,7 @@ http.createServer(async (req, res) => {
       content = JSON.stringify({ question: '这段话为什么重要？(fake)', answer: '因为它提出了 **注意力** 机制，复杂度为 $O(n^2)$。(fake)' });
     }
     else {
-      const r = { page: buildPage, article_summary: buildArticle, outline: buildOutline, filter: buildFilter, explain: buildExplain }[kind](text);
+      const r = { page: buildPage, article_summary: buildArticle, outline: buildOutline, filter: buildFilter, explain: buildExplain, figures: buildFigures }[kind](text);
       content = JSON.stringify(r.obj);
       info = r.info;
     }

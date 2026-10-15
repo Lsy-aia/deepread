@@ -178,6 +178,27 @@ await test("explainOne", async () => {
   await assert.rejects(E.explainOne(para(4), { pageIndex: 3 }));
 });
 
+await test("roles: known roles kept (case-insensitive), unknown dropped, flow to onPage and explainOne", async () => {
+  const set = new Set(["p_0_1", "p_0_2", "p_0_3"]);
+  const P = E._parseReply;
+  const got = P(JSON.stringify({ explanations: [
+    { key: "p_0_1", role: "Method", explanation: "A" },
+    { key: "p_0_2", role: "summary", explanation: "B" },
+    { key: "p_0_3", explanation: "C" },
+  ] }), set);
+  assert.equal(got.get("p_0_2"), "B");
+  assert.deepEqual(plain([...got.roles]), [["p_0_1", "method"]]);
+  handler = (args) => ({ content: JSON.stringify({ explanations: itemsOf(args).map((i, n) => ({ key: i.key, role: n ? "result" : "gap", explanation: "x" })) }) });
+  const pages = [];
+  const out = await E.explainPages(data(), { concurrency: 1, onPage: (p, m, r) => pages.push([p, [...r.values()]]) });
+  assert.deepEqual(plain([...out.roles]), [["p_0_1", "gap"], ["p_1_0", "gap"], ["p_1_1", "result"]]);
+  assert.deepEqual(pages, [[0, ["gap"]], [1, ["gap", "result"]]]);
+  assert.match(requests[0].system, /role/);
+  const one = await E.explainOne(para(4), { pageIndex: 3, withRole: true });
+  assert.deepEqual(plain(one), { text: "x", role: "gap" });
+  assert.deepEqual(plain([...E.ROLES]), ["background", "gap", "prior", "contribution", "method", "result", "limitation"]);
+});
+
 if (failures) {
   console.log(`${failures} test(s) failed`);
   process.exit(1);

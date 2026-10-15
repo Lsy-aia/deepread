@@ -15,7 +15,8 @@
   color: var(--fill-primary, #222); white-space: nowrap; position: relative; overflow: hidden; }
 .deepread-toolbar .dr-run .dr-run-progress { position: absolute; left: 0; bottom: 0; height: 2px; background: #3b82f6; transition: width .3s; }
 .deepread-toolbar .dr-run.dr-ready::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
-.deepread-toolbar .dr-menu-button { width: 18px; font-size: 10px; }
+.deepread-toolbar .dr-menu-button { width: auto; padding: 0 7px; gap: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.deepread-toolbar .dr-menu-button .dr-count { font-weight: 400; opacity: 0.7; font-size: 11px; }
 .deepread-menu { position: fixed; z-index: 2147483001; min-width: 220px; padding: 4px; border-radius: 8px;
   background: var(--material-toolbar, #fff); color: var(--fill-primary, #222); border: 1px solid rgba(0,0,0,0.12);
   box-shadow: 0 8px 24px rgba(0,0,0,0.18); font: 12.5px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -29,6 +30,19 @@
 .deepread-menu .dr-menu-row button { width: auto; min-width: 26px; padding: 1px 6px; justify-content: center;
   border: 1px solid rgba(0,0,0,0.15); }
 .deepread-menu .dr-menu-row .dr-value { min-width: 44px; text-align: center; opacity: 0.75; }
+.deepread-menu.dr-features { width: 300px; padding: 6px; }
+.deepread-menu .dr-menu-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 6px 6px; }
+.deepread-menu .dr-menu-head strong { font-size: 13px; }
+.deepread-menu .dr-scope { display: flex; padding: 2px; border-radius: 6px; background: rgba(0,0,0,0.06); }
+.deepread-menu .dr-scope button { width: auto; padding: 3px 8px; border-radius: 5px; font-size: 11.5px; opacity: 0.75; }
+.deepread-menu .dr-scope button[aria-pressed="true"] { background: var(--material-toolbar, #fff); opacity: 1; box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
+.deepread-menu .dr-feature { align-items: flex-start; gap: 10px; padding: 6px 8px; }
+.deepread-menu .dr-box { flex-shrink: 0; width: 16px; height: 16px; margin-top: 1px; border-radius: 4px; box-sizing: border-box;
+  border: 1.5px solid #9a9a94; display: grid; place-items: center; color: #fff; font-size: 11px; line-height: 1; }
+.deepread-menu .dr-feature[aria-checked="true"] .dr-box { background: #2b59c3; border-color: #2b59c3; }
+.deepread-menu .dr-feature-text { display: flex; flex-direction: column; gap: 1px; }
+.deepread-menu .dr-feature-text strong { font-weight: 600; }
+.deepread-menu .dr-feature-text small { font-size: 11.5px; opacity: 0.7; }
 .deepread-toast { position: fixed; right: 16px; bottom: 16px; z-index: 2147483002; max-width: 380px; padding: 9px 12px;
   border-radius: 8px; background: #1f2328; color: #fff; font: 12.5px/1.45 -apple-system, BlinkMacSystemFont, sans-serif;
   box-shadow: 0 6px 20px rgba(0,0,0,0.25); white-space: pre-wrap; }
@@ -88,15 +102,6 @@
     }
   }
 
-  function toggleOption(prefKey, optionKey) {
-    const value = !(DeepRead.prefs.get(prefKey) !== false);
-    DeepRead.prefs.set(prefKey, value);
-    DeepRead.Session.forEachOverlay((overlay) => {
-      if (optionKey) overlay.setOptions({ [optionKey]: value });
-      overlay.session.rail?.refresh();
-    });
-  }
-
   /** "生成 AI 讲解" for papers deep-read before explanations existed (or after they were turned off). */
   function explainItem(session, doc, item) {
     if (!session.hasResults || !DeepRead.Explainer) return null;
@@ -132,15 +137,17 @@
       h(doc, "button", { onclick: change(-step), title: "−" }, "−"), value, h(doc, "button", { onclick: change(step), title: "+" }, "+"));
   }
 
+  let featureScope = "paper"; // 「功能」 menu: apply switches to this paper only, or make them the default
+
+  /** The 「功能」 menu: per-paper module switches, card size, and the paper's actions. */
   function openMenu(session, doc, anchor) {
     doc.querySelector(".deepread-menu")?.remove();
-    const check = (prefKey) => h(doc, "span", { class: "dr-check" }, DeepRead.prefs.get(prefKey) !== false ? "✓" : "");
     const close = () => {
       menu.remove();
       doc.removeEventListener("pointerdown", outside, true);
     };
     const outside = (e) => {
-      if (!menu.contains(e.target)) close();
+      if (!menu.contains(e.target) && e.target !== anchor && !anchor.contains(e.target)) close();
     };
     const item = (content, action) => h(doc, "button", {
       onclick: (e) => {
@@ -149,30 +156,77 @@
         action();
       },
     }, ...content);
-    const menu = h(doc, "div", { class: "deepread-menu" },
-      item([h(doc, "span", { class: "dr-check" }), session.hasResults ? DeepRead.t("toolbar.rerun") : DeepRead.t("toolbar.run")],
-        () => onRun(session, doc)),
-      explainItem(session, doc, item),
+    const plain = (label) => [h(doc, "span", { class: "dr-check" }), label];
+
+    const scopeButton = (scope, label) => h(doc, "button", {
+      "aria-pressed": String(featureScope === scope),
+      onclick: (e) => {
+        e.stopPropagation();
+        featureScope = scope;
+        for (const b of scopeBox.children) b.setAttribute("aria-pressed", String(b === e.currentTarget));
+      },
+    }, label);
+    const scopeBox = h(doc, "div", { class: "dr-scope", role: "group", "aria-label": DeepRead.bilingual("作用范围", "Scope") },
+      scopeButton("paper", DeepRead.bilingual("仅本文", "This paper")),
+      scopeButton("default", DeepRead.bilingual("设为默认", "Default")));
+
+    const splitLayout = () => DeepRead.prefs.get("view.railLayout") !== "right";
+    const cardsHint = () => {
+      if (!splitLayout()) return DeepRead.bilingual("全部放在右侧", "All on the right");
+      return session.rail?.leftRoot
+        ? DeepRead.bilingual("本文双栏 · 两侧显示", "Two columns · both sides")
+        : DeepRead.bilingual("单栏一侧、双栏两侧，自动判断", "One side, or both sides for two-column papers");
+    };
+    const featureRow = (module) => {
+      const on = DeepRead.Modules.enabled(session, module.key);
+      const hint = module.key === "cards" ? cardsHint() : DeepRead.Modules.hint(module);
+      return h(doc, "button", {
+        class: "dr-feature",
+        role: "menuitemcheckbox",
+        "aria-checked": String(on),
+        onclick: (e) => {
+          e.stopPropagation();
+          DeepRead.Modules.set(session, module.key, !DeepRead.Modules.enabled(session, module.key), featureScope);
+          if (featureScope === "default") DeepRead.Session.forEachOverlay((overlay) => overlay.session.applyModules());
+          rows.replaceChildren(...DeepRead.Modules.LIST.map(featureRow));
+        },
+      }, h(doc, "span", { class: "dr-box", "aria-hidden": "true" }, on ? "✓" : ""),
+      h(doc, "span", { class: "dr-feature-text" }, h(doc, "strong", {}, DeepRead.Modules.label(module)), hint ? h(doc, "small", {}, hint) : null));
+    };
+    const rows = h(doc, "div", { role: "group" }, ...DeepRead.Modules.LIST.map(featureRow));
+    // Card placement is a global setting (the rail rebuilds through its pref observer).
+    const layoutRow = () => h(doc, "button", {
+      class: "dr-feature dr-layout",
+      role: "menuitemcheckbox",
+      "aria-checked": String(splitLayout()),
+      onclick: (e) => {
+        e.stopPropagation();
+        DeepRead.prefs.set("view.railLayout", splitLayout() ? "right" : "split");
+        layout.replaceChildren(layoutRow());
+        doc.defaultView.setTimeout(() => rows.replaceChildren(...DeepRead.Modules.LIST.map(featureRow)), 50);
+      },
+    }, h(doc, "span", { class: "dr-box", "aria-hidden": "true" }, splitLayout() ? "✓" : ""),
+    h(doc, "span", { class: "dr-feature-text" }, h(doc, "strong", {}, DeepRead.bilingual("双栏论文两侧放卡片", "Cards on both sides for two columns")),
+      h(doc, "small", {}, DeepRead.bilingual("关闭后卡片都放在右侧", "Off: all cards on the right"))));
+    const layout = h(doc, "div", {}, layoutRow());
+
+    const menu = h(doc, "div", { class: "deepread-menu dr-features", role: "menu", "aria-label": DeepRead.bilingual("本文显示的功能", "Features for this paper") },
+      h(doc, "div", { class: "dr-menu-head" }, h(doc, "strong", {}, DeepRead.bilingual("本文显示的功能", "Features")), scopeBox),
+      rows,
       h(doc, "hr"),
       sizeRow(doc, DeepRead.bilingual("卡片字号", "Card font"), "view.cardFontSize", 1, DeepRead.Rail.clampFont, (v) => `${v} px`),
       sizeRow(doc, DeepRead.bilingual("卡片宽度", "Card width"), "view.railWidth", 20, DeepRead.Rail.clampWidth, (v) => `${v} px`),
-      item([check("view.marginCards"), DeepRead.bilingual("页边卡片", "Margin cards")], () => toggleOption("view.marginCards", null)),
-      item([h(doc, "span", { class: "dr-check" }, DeepRead.prefs.get("view.railLayout") !== "right" ? "✓" : ""),
-        DeepRead.bilingual("双栏卡片（左栏段落放左边）", "Split cards (left-column paragraphs on the left)")], () => {
-        DeepRead.prefs.set("view.railLayout", DeepRead.prefs.get("view.railLayout") === "right" ? "split" : "right");
-        DeepRead.Session.forEachOverlay((overlay) => overlay.session.rail?.refresh());
-      }),
-      item([check("view.highlights"), DeepRead.t("toolbar.showHighlights")], () => toggleOption("view.highlights", "highlights")),
-      item([check("view.hoverCards"), DeepRead.t("toolbar.showCards")], () => toggleOption("view.hoverCards", "hoverCards")),
-      item([check("view.translationPopup"), DeepRead.t("toolbar.showTranslation")], () => toggleOption("view.translationPopup", "translationPopup")),
+      layout,
+      h(doc, "hr"),
+      item(plain(session.hasResults ? DeepRead.t("toolbar.rerun") : DeepRead.t("toolbar.run")), () => onRun(session, doc)),
+      explainItem(session, doc, item),
       session.hiddenCardCount
-        ? item([h(doc, "span", { class: "dr-check" }), DeepRead.bilingual(`显示已隐藏的卡片（${session.hiddenCardCount}）`, `Show hidden cards (${session.hiddenCardCount})`)],
+        ? item(plain(DeepRead.bilingual(`显示已隐藏的卡片（${session.hiddenCardCount}）`, `Show hidden cards (${session.hiddenCardCount})`)),
           () => session.showHiddenCards())
         : null,
-      h(doc, "hr"),
-      item([h(doc, "span", { class: "dr-check" }), DeepRead.bilingual("DeepRead 设置…", "DeepRead settings…")], () => DeepRead.openPreferences()),
+      item(plain(DeepRead.bilingual("DeepRead 设置…", "DeepRead settings…")), () => DeepRead.openPreferences()),
       session.hasResults
-        ? item([h(doc, "span", { class: "dr-check" }), DeepRead.t("toolbar.clear")], async () => {
+        ? item(plain(DeepRead.t("toolbar.clear")), async () => {
           if (confirm(session.reader, DeepRead.t("toolbar.confirmClear"))) await session.clearResults();
         })
         : null);
@@ -194,11 +248,23 @@
     const progress = h(doc, "div", { class: "dr-run-progress" });
     const label = h(doc, "span", {}, DeepRead.t("toolbar.run"));
     const runButton = h(doc, "button", { class: "toolbar-button dr-run", onclick: () => onRun(session, doc) }, label, progress);
+    const count = h(doc, "span", { class: "dr-count" });
     const menuButton = h(doc, "button", {
       class: "toolbar-button dr-menu-button",
-      title: DeepRead.t("toolbar.menu"),
-      onclick: (e) => openMenu(session, doc, e.currentTarget),
-    }, "▾");
+      title: DeepRead.bilingual("本文显示的功能", "Features for this paper"),
+      "aria-haspopup": "menu",
+      onclick: (e) => {
+        if (doc.querySelector(".deepread-menu.dr-features")) {
+          doc.querySelector(".deepread-menu").remove();
+          return;
+        }
+        openMenu(session, doc, e.currentTarget);
+      },
+    }, DeepRead.bilingual("功能", "Features"), count, "▾");
+    const updateCount = () => {
+      const { on, total } = DeepRead.Modules.count(session);
+      count.textContent = `${on}/${total}`;
+    };
     const container = h(doc, "div", { class: "deepread-toolbar" }, runButton, menuButton);
 
     const update = () => {
@@ -222,8 +288,10 @@
         return;
       }
       if (type === "change" || type === "progress") update();
+      if (type === "modules" || type === "change") updateCount();
     });
     update();
+    updateCount();
     append(container);
     session.init().then(update);
   }

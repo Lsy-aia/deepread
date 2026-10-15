@@ -148,13 +148,16 @@
       this.githubRepo = null;
       this.overlay = new DeepRead.Overlay(this);
       this.rail = DeepRead.Rail ? new DeepRead.Rail(this) : null;
+      this.structureBar = DeepRead.StructureBar ? new DeepRead.StructureBar(this) : null;
+      this.figureGuides = {}; // figure id → { title, steps: [{ text, panel }] }
       this.editingFlashcard = null;
       this.flipped = new Set();
       this.explanations = {}; // paragraph key → { text, at }: the "AI 讲解" shown as the card body
       this.explaining = new Set(); // keys being generated
       this._explainAbort = null;
       this.on((event) => {
-        if (event === "change" || event === "flashcards" || event === "explanations") this.rail?.refresh();
+        if (event === "change" || event === "flashcards" || event === "explanations" || event === "figures") this.rail?.refresh();
+        if (event === "change") this.structureBar?.refresh();
         if (event === "change") for (const card of this.flashcards || []) delete card._autoKey;
       });
     }
@@ -228,14 +231,17 @@
         };
         this.userState = { pointImportance: {}, ...(stored.user_state || {}) };
         this.explanations = stored.explanations || {};
+        this.figureGuides = stored.figure_guides || {};
         this.status = "ready";
       }
       else {
         this.status = "idle";
       }
       this.overlay.attach(view);
+      this.applyModules({ refresh: false });
       if (this.data) this.overlay.setData(this.data.hierarchicalData);
       this.rail?.attach(view);
+      this.structureBar?.attach(view);
       this.loadFlashcards().catch((e) => DeepRead.log("loading flashcards failed", String(e)));
       this._emit();
     }
@@ -243,6 +249,8 @@
     destroy() {
       this.cancel();
       this._explainAbort?.abort();
+      this._figureAbort?.abort();
+      this.structureBar?.detach();
       this.rail?.detach();
       this.overlay.detach();
       this._listeners.clear();
@@ -415,8 +423,11 @@
         this.data = data;
         this.userState = { pointImportance: {} };
         this._explainAbort?.abort();
+        this._figureAbort?.abort();
         this.explanations = {};
         this.explaining.clear();
+        this.figureGuides = {};
+        this._figuresRequested = false;
         this.overlay.setData(data.hierarchicalData);
         this.status = "ready";
         this.progress = { percent: 100, message: DeepRead.t("flow.done") };
@@ -424,6 +435,9 @@
         // Card bodies: AI explanations fill in page by page after the deep read.
         if (DeepRead.prefs.get("cards.autoExplain") !== false) {
           this.explainAll().catch((e) => DeepRead.log("explanations failed", String(e)));
+        }
+        if (DeepRead.Modules.enabled(this, "figureCards")) {
+          this.explainFigures().catch((e) => DeepRead.log("figure guides failed", String(e)));
         }
         return true;
       }
@@ -522,6 +536,9 @@
     async clearResults() {
       this.cancel();
       this._explainAbort?.abort();
+      this._figureAbort?.abort();
+      this.figureGuides = {};
+      this._figuresRequested = false;
       this.explanations = {};
       this.explaining.clear();
       await DeepRead.Store.deletePaper(this.key);
@@ -534,10 +551,83 @@
       this._emit();
     }
 
+    /** Push the paper's module switches (DeepRead.Modules) into the overlay, rail and section bar. */
+    applyModules({ refresh = true } = {}) {
+      const M = DeepRead.Modules;
+      this.overlay.setOptions?.({
+        highlights: M.enabled(this, "highlights"),
+        translationPopup: M.enabled(this, "hoverTranslation"),
+      });
+      if (refresh) {
+        this.rail?.refresh();
+        this.structureBar?.refresh();
+      }
+      this._emit("modules");
+    }
+
+    /* ---------- figures and tables (module "figureCards") ---------- */
+
+    /** Captioned figures/tables of the paper (DeepRead.Figures.list), cached per content list. */
+    figures() {
+      const list = this.data?.contentList;
+      if (!Array.isArray(list) || !DeepRead.Figures) return [];
+      if (this._figuresFor !== list) {
+        this._figuresFor = list;
+        this._figures = DeepRead.Figures.list(list);
+        this._figureMentions = DeepRead.Figures.mentions(this._figures, list);
+      }
+      return this._figures;
+    }
+
+    figureMentionCount(id) {
+      this.figures();
+      return this._figureMentions?.get(id)?.length || 0;
+    }
+
+    figureGuide(id) {
+      return this.figureGuides?.[id] || null;
+    }
+
+    get explainingFigures() {
+      return !!this._explainingFigures;
+    }
+
+    /** Write "how to read this figure" guides for figures that have none (or all, with force). */
+    async explainFigures({ force = false } = {}) {
+      if (!this.hasResults || this._explainingFigures || !DeepRead.LLM.isConfigured()) return 0;
+      const figures = this.figures().filter((f) => force || !this.figureGuides?.[f.id]);
+      if (!figures.length) return 0;
+      const controller = new AbortController();
+      this._figureAbort = controller;
+      this._explainingFigures = true;
+      this._emit("figures");
+      try {
+        const guides = await DeepRead.Figures.explain(figures, {
+          contentList: this.data.contentList,
+          mentions: this._figureMentions,
+          targetLang: DeepRead.prefs.language(),
+          paperContext: this.paperContext(),
+          signal: controller.signal,
+        });
+        this.figureGuides = { ...this.figureGuides, ...Object.fromEntries(guides) };
+        await DeepRead.Store.savePaper(this.key, this.item.id, { figure_guides: this.figureGuides });
+        return guides.size;
+      }
+      finally {
+        this._explainingFigures = false;
+        this._emit("figures");
+      }
+    }
+
     /* ---------- AI explanations (card bodies) ---------- */
 
     explanation(key) {
       return this.explanations?.[key]?.text || "";
+    }
+
+    /** The paragraph's role in the argument (background / gap / prior / contribution / method / result / limitation). */
+    paragraphRole(key) {
+      return this.explanations?.[key]?.role || "";
     }
 
     isExplaining(key) {
@@ -590,9 +680,9 @@
           paperContext: this.paperContext(),
           only: new Set(keys),
           signal: controller.signal,
-          onPage: (_pageIndex, map) => {
+          onPage: (_pageIndex, map, roles) => {
             for (const [key, text] of map) {
-              this.explanations[key] = { text, at: Date.now() };
+              this.explanations[key] = { text, role: roles?.get(key) || "", at: Date.now() };
               this.explaining.delete(key);
               count++;
             }
@@ -619,14 +709,15 @@
       this.explaining.add(key);
       this._emit("explanations");
       try {
-        const text = await DeepRead.Explainer.explainOne(paragraph, {
+        const { text, role } = await DeepRead.Explainer.explainOne(paragraph, {
           pageIndex: page.pageIndex,
           targetLang: DeepRead.prefs.language(),
           paperContext: this.paperContext(),
           neighbors,
+          withRole: true,
         });
         if (text) {
-          this.explanations[key] = { text, at: Date.now() };
+          this.explanations[key] = { text, role: role || this.explanations[key]?.role || "", at: Date.now() };
           this._saveExplanationsSoon();
         }
         return text;

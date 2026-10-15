@@ -14,6 +14,8 @@
   const MAX_NEIGHBOR_CHARS = 1200;
   const ELIGIBLE_TYPES = new Set(["text", "text_with_equation"]);
   const MARKER = "Paragraphs to explain (JSON):";
+  // A paragraph's role in the paper's argument (shown as the card's tinted header).
+  const ROLES = ["background", "gap", "prior", "contribution", "method", "result", "limitation"];
 
   const SYSTEM_PROMPT = [
     "You are a patient tutor helping a reader understand an academic paper, one paragraph at a time.",
@@ -24,13 +26,14 @@
     "Connect it to earlier content of the paper when that helps.",
     "Rules: explain, do not translate. Do not repeat the given summary. Do not add facts the paper does not support.",
     "Each explanation is 2 to 5 sentences, with no preamble such as \"This paragraph says\". Markdown is allowed (use **bold** for key terms); write math as $...$.",
+    "Also label each paragraph's role in the argument with exactly one of: background (context the work builds on), gap (what is missing or fails so far), prior (prior approaches being described), contribution (what this paper proposes or claims), method (how the approach works), result (experiments, evidence, findings), limitation (limits, failure cases, future work).",
     "Return only a JSON object, with each key copied exactly from the input.",
   ].join("\n");
 
   const TASK_PROMPT = [
     "Explain each of the paragraphs below for a reader who is new to the topic.",
     "Respond with JSON only, in exactly this shape:",
-    "{\"explanations\":[{\"key\":\"<key of the paragraph>\",\"explanation\":\"<your explanation>\"}]}",
+    "{\"explanations\":[{\"key\":\"<key of the paragraph>\",\"role\":\"<one role>\",\"explanation\":\"<your explanation>\"}]}",
     "Include one entry for every item, and keep the keys exactly as given.",
   ].join("\n");
 
@@ -115,25 +118,30 @@
       }
     }
     const out = new Map();
+    out.roles = new Map(); // key -> role, when the model gave a known one
     if (!value || typeof value !== "object") return out;
-    const add = (k, t) => {
+    const add = (k, t, role) => {
       const kk = str(k);
       const tt = str(t);
-      if (kk && tt && (!expected || expected.has(kk))) out.set(kk, tt);
+      if (kk && tt && (!expected || expected.has(kk))) {
+        out.set(kk, tt);
+        const rr = str(role).toLowerCase();
+        if (ROLES.includes(rr)) out.roles.set(kk, rr);
+      }
     };
     let list = null;
     if (Array.isArray(value)) list = value;
     else if (Array.isArray(value.explanations)) list = value.explanations;
     if (list) {
       for (const it of list) {
-        if (it && typeof it === "object") add(it.key, it.explanation ?? it.text ?? it.explain);
+        if (it && typeof it === "object") add(it.key, it.explanation ?? it.text ?? it.explain, it.role);
       }
     }
     else {
       const map = value.explanations && typeof value.explanations === "object" ? value.explanations : value;
       for (const [k, t] of Object.entries(map)) {
         if (typeof t === "string") add(k, t);
-        else if (t && typeof t === "object") add(k, t.explanation ?? t.text);
+        else if (t && typeof t === "object") add(k, t.explanation ?? t.text, t.role);
       }
     }
     return out;
@@ -200,8 +208,10 @@
     }
   }
 
+  /** → Map(key → text); `.roles` is a Map(key → role). onPage(pageIndex, Map(key → text), Map(key → role)). */
   async function explainPages(hierarchicalData, opts = {}) {
     const results = new Map();
+    results.roles = new Map();
     const batches = pageBatches(hierarchicalData, { only: opts.only });
     const total = batches.length;
     const cfgConcurrency = Number(DeepRead.prefs?.llmConfig?.()?.concurrency) || 4;
@@ -218,13 +228,18 @@
         previous: previousPageSummaries(hierarchicalData, batch.pageIndex),
       };
       const got = new Map();
+      got.roles = new Map();
+      const take = (reply) => {
+        for (const [k, t] of reply) got.set(k, t);
+        for (const [k, r] of reply.roles || []) got.roles.set(k, r);
+      };
       let error = null;
       try {
-        for (const [k, t] of await requestWithRetry(batch.items, ctx, opts)) got.set(k, t);
+        take(await requestWithRetry(batch.items, ctx, opts));
         const missing = batch.items.filter((i) => !got.has(i.key));
         if (missing.length) {
           try {
-            for (const [k, t] of await request(missing, ctx, opts)) got.set(k, t);
+            take(await request(missing, ctx, opts));
           }
           catch (e) {
             if (isAbort(e, opts.signal)) throw abortError();
@@ -237,7 +252,8 @@
         error = e;
       }
       for (const [k, t] of got) results.set(k, t);
-      if (got.size && typeof opts.onPage === "function") opts.onPage(batch.pageIndex, got);
+      for (const [k, r] of got.roles) results.roles.set(k, r);
+      if (got.size && typeof opts.onPage === "function") opts.onPage(batch.pageIndex, got, got.roles);
       done++;
       progress(error ? { pageIndex: batch.pageIndex, error } : {});
     }
@@ -267,12 +283,14 @@
     const got = await requestWithRetry(items, ctx, opts);
     const text = got.get(k);
     if (!text) throw new Error("The model returned no explanation");
+    if (opts.withRole) return { text, role: got.roles?.get(k) || "" };
     return text;
   }
 
   DeepRead.Explainer = {
     SYSTEM_PROMPT,
     TASK_PROMPT,
+    ROLES,
     key,
     eligible,
     pageBatches,

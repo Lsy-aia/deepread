@@ -7,3 +7,39 @@
 .deepread-pref-input { flex: 1; min-width: 0; }
 .deepread-pref-slider { flex: 1; min-width: 0; max-width: 260px; }
 .deepread-pref-slider-value { min-width: 56px; margin-inline-start: 8px; }
+.deepread-pref-indent { margin-inline-start: 24px; margin-top: -2px; }
+.deepread-pref-subtitle { margin-top: 10px; }
+.deepread-pref-buttons { gap: 4px; }
+.deepread-cards { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
+.deepread-card {
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 calc(50% - 8px);
+  min-width: 200px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.deepread-card:hover { background: color-mix(in srgb, currentColor 6%, transparent); }
+.deepread-card[aria-checked="true"] {
+  border-color: AccentColor;
+  box-shadow: 0 0 0 1px AccentColor;
+  background: color-mix(in srgb, AccentColor 8%, transparent);
+}
+.deepread-card-title { font-weight: 600; padding-inline-end: 44px; overflow-wrap: anywhere; }
+.deepread-card-desc { color: GrayText; font-size: 0.88em; overflow-wrap: anywhere; }
+.deepread-card-badge {
+  display: none;
+  position: absolute;
+  top: 8px;
+  inset-inline-end: 10px;
+  font-size: 0.8em;
+  color: AccentColor;
+}
+.deepread-card[aria-checked="true"] > .deepread-card-badge { display: block; }
+#deepread-pref-current-tpl { display: none; }

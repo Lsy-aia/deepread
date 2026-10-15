@@ -249,3 +249,46 @@ v0.4–v0.5 (ReadFlow client, built-in full-document translation, translated-PDF
   `chat.maxContextChars`); quotes from cards carry `block`. `linkPageRefs` links `p. 3 ¶2` →
   `session.openBlock(page, para)`. `DeepRead.ChatPane.systemPrompt(session)` is exposed for tests.
 - e2e: `test/e2e/cards.js`.
+
+## v0.8: feature modules, roles, section bar, figure cards, three channels
+
+- **Modules** (`reader/modules.js`). `DeepRead.Modules.LIST` = cards / hoverTranslation / highlights / structureBar /
+  figureCards, each backed by a global pref (`view.*`). Effective state: `session.userState.modules[key]` (per-paper
+  override, saved with the user state) if boolean, else the pref. `Modules.set(session, key, value, "paper"|"default")`
+  — "default" writes the pref and drops this paper's override. Everything that draws asks `Modules.enabled(session, key)`;
+  `session.applyModules()` pushes the state to overlay / rail / structure bar and emits `"modules"`. New modules
+  (v0.9: question-led reading, hover check, skim layers) are added to `LIST` and nothing else in the toolbar.
+- **Toolbar 「功能 n/m ▾」** (`reader/toolbar.js`, `openMenu`): scope switch 仅本文 / 设为默认, one
+  `.dr-feature[role=menuitemcheckbox]` row per module (re-renders in place, menu stays open), card font / width rows,
+  then 重新精读 · 生成 AI 讲解 · 显示隐藏的卡片 · 设置 · 删除本文精读结果.
+- **Paragraph roles.** The explainer asks for one role per paragraph (`Explainer.ROLES`: background, gap, prior,
+  contribution, method, result, limitation; unknown values dropped). `explanations[key] = { text, role, at }`;
+  `session.paragraphRole(key)`. Cards: `.dr-para[data-role]`, a `.dr-role` pill (`Rail.roleLabel`), tinted
+  `.dr-phead`, importance dot; compact cards show `.dr-badges` (闪卡 N / 理解).
+- **Section bar** (`reader/structureBar.js`, `services/structure.js`). `Structure.sections(contentList)` →
+  `[{ id, title, label, number, role, start, end }]` with `start`/`end` as fractional page positions
+  (page index + y‰/1000); roles front / intro / background / method / experiment / discussion / references /
+  appendix. The bar is `#deepread-bar` in the reader document at `top: 41px` (under the toolbar); while it is shown,
+  `body.deepread-has-bar` moves `#split-view` to `top: 71px`. Segment flex = section length; read part drawn as a
+  hard-stop gradient from `userState.readUpTo` (max position seen at 85% of the viewport). "Current" uses a reading
+  line 20% down the viewport. Click scrolls `viewerContainer` so the heading sits 24 px below the top —
+  `reader.navigate({position})` would centre it.
+- **Figure cards** (`services/figures.js`). `Figures.list(contentList)` → `{ id: "fig_3"|"tab_I", kind, label: "图 3",
+  title, caption, pageIndex, bbox }`; `Figures.mentions(figures, contentList)`; `Figures.explain(figures, {…})` →
+  `Map(id → { title, steps: [{ text, panel }] })`, stored in `papers.figure_guides`. Session: `figures()` (cached),
+  `figureMentionCount(id)`, `figureGuide(id)`, `explainFigures({ force })` (after `run()` when the module is on, and once
+  lazily from the rail). Rail items `g_<id>` (`kind: "figure"`) anchored at `overlay.permilleRect(page, bbox)`: label,
+  title, mention count, a thumbnail copied from the rendered page canvas (`_drawThumb`, redrawn on `pagerendered`),
+  numbered steps. Clicking a paragraph that mentions the figure (`Rail.figureMention`) links the card and highlights
+  the step for the mentioned panel.
+- **Parser fallback.** For any provider other than builtin, a non-abort failure reports status "fallback" and
+  reruns with the built-in text layer (`{ …result, fallback: true }`).
+- **Settings: three channels.** ① 精读 API — provider profiles in the CC Switch style: `llm.profiles` (JSON list of
+  `{ id, name, preset, baseURL, apiKey, model, chatModel, jsonMode, temperature, concurrency, extraHeaders }`) and
+  `llm.activeProfile`; the active profile is mirrored into the flat `llm.*` prefs, which the runtime keeps reading
+  (`prefs.profiles()` / `activeProfile()` are read-only helpers). ② 文档解析 — radio cards over `parser.provider`.
+  ③ Agent (preparation for v1.0, nothing runs yet): `agent.kind` none / codex / claude / api / import,
+  `agent.command`, `agent.skills` (default `nature-paper-xray,nature-paper-card`), `agent.timeoutMin`,
+  `agent.api.*`. 「检测」 only looks for the executable on PATH and the skills' `SKILL.md`
+  (`~/agents/codex/skills`, `~/.codex/skills`, `~/.claude/skills`); it never executes anything.
+- e2e: `test/e2e/v08.js` (fallback, roles, bar + jump, figure card, refreshed cards, 功能 menu scopes).

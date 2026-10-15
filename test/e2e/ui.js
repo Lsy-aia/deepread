@@ -65,6 +65,57 @@ E2E.run = async function () {
     step("prefs-cardfontsize", { before, after, label: lbl, ok: after === 15 });
     if (after !== 15) throw new Error("cardFontSize pref not updated by slider: " + after);
   }
+  {
+    // Profiles: migration, add (same path as the button), switch, switch back.
+    const click = (id) => doc.getElementById(id).click();
+    const profs = () => JSON.parse(Zotero.Prefs.get("deepread.llm.profiles") || "[]");
+    const initial = profs();
+    const firstId = Zotero.Prefs.get("deepread.llm.activeProfile");
+    const firstModel = Zotero.Prefs.get("deepread.llm.model");
+    if (initial.length !== 1 || initial[0].id !== firstId) throw new Error("profile migration failed: " + JSON.stringify(initial));
+    click("deepread-pref-profile-add");
+    await sleep(300);
+    const secondId = Zotero.Prefs.get("deepread.llm.activeProfile");
+    const modelInput = doc.getElementById("deepread-pref-llm-model");
+    modelInput.value = "e2e-model-b";
+    modelInput.dispatchEvent(new win.Event("input", { bubbles: true }));
+    modelInput.dispatchEvent(new win.Event("change", { bubbles: true }));
+    await sleep(400);
+    const afterAdd = profs();
+    const cards = [...doc.querySelectorAll("#deepread-pref-profiles .deepread-card")];
+    cards.find((c) => c.dataset.value === firstId).click();
+    await sleep(300);
+    const backModel = Zotero.Prefs.get("deepread.llm.model");
+    cards.find((c) => c.dataset.value === secondId).click();
+    await sleep(300);
+    const bModel = Zotero.Prefs.get("deepread.llm.model");
+    doc.querySelectorAll("#deepread-pref-profiles .deepread-card")[0].click();
+    await sleep(300);
+    const ok = initial.length === 1 && afterAdd.length === 2 && secondId !== firstId
+      && backModel === firstModel && bModel === "e2e-model-b" && Zotero.Prefs.get("deepread.llm.model") === firstModel
+      && afterAdd.find((p) => p.id === secondId).model === "e2e-model-b";
+    step("prefs-profiles", { initial: initial.length, afterAdd: afterAdd.length, firstModel, backModel, bModel, ok });
+    // Leave a single profile for later steps / reruns.
+    doc.querySelectorAll("#deepread-pref-profiles .deepread-card")[1].click();
+    await sleep(200);
+    click("deepread-pref-profile-delete");
+    await sleep(300);
+    if (profs().length !== 1 || Zotero.Prefs.get("deepread.llm.model") !== firstModel) throw new Error("delete/restore failed");
+    if (!ok) throw new Error("profile switching failed");
+    // Parser + agent cards
+    doc.querySelector('#deepread-pref-parser-cards .deepread-card[data-value="selfhost"]').click();
+    await sleep(200);
+    const prov = Zotero.Prefs.get("deepread.parser.provider");
+    doc.querySelector('#deepread-pref-parser-cards .deepread-card[data-value="builtin"]').click();
+    doc.querySelector('#deepread-pref-agent-cards .deepread-card[data-value="codex"]').click();
+    await sleep(200);
+    click("deepread-pref-agent-detect");
+    await sleep(1500);
+    step("prefs-cards", { provider: prov, agentKind: Zotero.Prefs.get("deepread.agent.kind"), detect: doc.getElementById("deepread-pref-agent-status").value });
+    if (prov !== "selfhost") throw new Error("parser card did not set provider");
+    doc.querySelector('#deepread-pref-agent-cards .deepread-card[data-value="none"]').click();
+    await sleep(200);
+  }
   const llmTest = root.querySelector("[id*='llm'][id*='test']");
   if (llmTest) {
     llmTest.click();

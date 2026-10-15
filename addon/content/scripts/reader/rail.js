@@ -70,7 +70,62 @@
 .deepread-rail .dr-fc-a p { margin: 0.2em 0; }
 .deepread-rail .dr-muted { color: var(--fill-secondary, #6b7280); }
 .deepread-rail .dr-rcard:hover { z-index: 5; }
-.deepread-rail .dr-rcard.dr-open { z-index: 6; box-shadow: 0 0 0 2px rgba(251,191,36,0.95), 0 6px 18px rgba(0,0,0,0.14); }
+.deepread-rail .dr-rcard.dr-open { z-index: 6; border-color: #c9d6f3; box-shadow: 0 0 0 3px rgba(43,89,195,0.14), 0 8px 24px rgba(20,30,60,0.12); }
+/* Figure cards */
+.deepread-rail .dr-rcard.dr-figure { padding: 0 0 8px; overflow: hidden; border-radius: 10px; cursor: pointer; }
+.deepread-rail .dr-fhead { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #f4f4f1; border-bottom: 1px solid rgba(0,0,0,0.05); }
+.deepread-rail .dr-flabel { flex-shrink: 0; padding: 0 6px; border-radius: 8px; border: 1px solid rgba(0,0,0,0.12); background: #fff; font-size: 0.8em; font-weight: 600; line-height: 1.6; }
+.deepread-rail .dr-ftitle { flex: 1; min-width: 0; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deepread-rail .dr-fcount { flex-shrink: 0; font-size: 0.8em; color: var(--fill-secondary, #4a4a46); }
+.deepread-rail .dr-fthumb { display: block; margin: 8px 10px 0; border-radius: 4px; background: #ededea; }
+.deepread-rail .dr-fbody { margin: 6px 10px 0; }
+.deepread-rail .dr-fsteps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.deepread-rail .dr-fsteps li { display: flex; gap: 7px; padding: 2px 4px; margin: 0 -4px; border-radius: 6px; cursor: inherit; color: inherit; }
+.deepread-rail .dr-fsteps li::before { display: none; }
+.deepread-rail .dr-fsteps li.dr-on { background: rgba(43,89,195,0.10); }
+.deepread-rail .dr-fnum { flex-shrink: 0; width: 1.35em; height: 1.35em; margin-top: 0.15em; border-radius: 50%; background: #1d1d1b; color: #fff;
+  display: grid; place-items: center; font-size: 0.75em; font-weight: 700; }
+.deepread-rail .dr-fsteps li.dr-on .dr-fnum { background: #2b59c3; }
+.deepread-rail .dr-ftext { font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif; line-height: 1.6; }
+.deepread-rail .dr-fcaption { font-size: 0.9em; line-height: 1.5; color: var(--fill-secondary, #4a4a46); }
+.deepread-rail .dr-rcard.dr-figure.dr-compact .dr-fbody { display: none; }
+.deepread-rail .dr-rcard.dr-figure.dr-compact:hover .dr-fbody { display: block; }
+:root[data-color-scheme="dark"] .deepread-rail .dr-fhead { background: rgba(255,255,255,0.05); }
+/* Paragraph cards: tinted header by the paragraph's role, white body. Colour only in labels and fine edges. */
+.deepread-rail .dr-rcard.dr-para { padding: 0 0 9px; overflow: hidden; border-radius: 10px; }
+.deepread-rail .dr-para > *:not(.dr-phead) { margin-left: 10px; margin-right: 10px; }
+.deepread-rail .dr-phead { padding: 7px 8px 6px 10px; background: #fafaf8; border-bottom: 1px solid rgba(0,0,0,0.05); margin-bottom: 2px; }
+.deepread-rail .dr-para[data-role="background"] .dr-phead { background: #f5f6f8; }
+.deepread-rail .dr-para[data-role="gap"] .dr-phead { background: #fdf6f1; }
+.deepread-rail .dr-para[data-role="prior"] .dr-phead { background: #faf7f2; }
+.deepread-rail .dr-para[data-role="contribution"] .dr-phead, .deepread-rail .dr-para[data-role="method"] .dr-phead { background: #f3f6fd; }
+.deepread-rail .dr-para[data-role="result"] .dr-phead { background: #f1f8f7; }
+.deepread-rail .dr-para[data-role="limitation"] .dr-phead { background: #fcf3f3; }
+.deepread-rail .dr-para .dr-rhead { align-items: center; gap: 6px; }
+.deepread-rail .dr-role { flex-shrink: 0; align-self: flex-start; margin-top: 0.12em; padding: 0 5px; border-radius: 4px; font-size: 0.78em; font-weight: 700; line-height: 1.6; }
+.deepread-rail .dr-role-background { background: #eef0f4; color: #3a3f4c; }
+.deepread-rail .dr-role-gap { background: #fce9dd; color: #9a3412; }
+.deepread-rail .dr-role-prior { background: #f3eee6; color: #6b4e1e; }
+.deepread-rail .dr-role-contribution { background: #2b59c3; color: #fff; }
+.deepread-rail .dr-role-method { background: #e3eafa; color: #1e428f; }
+.deepread-rail .dr-role-result { background: #e0f1ee; color: #0b5550; }
+.deepread-rail .dr-role-limitation { background: #f8e6e6; color: #8a1c1c; }
+.deepread-rail .dr-imp { flex-shrink: 0; align-self: flex-start; margin-top: 0.5em; width: 7px; height: 7px; border-radius: 50%; }
+.deepread-rail .dr-imp-2 { background: #2b59c3; }
+.deepread-rail .dr-imp-3 { background: #c2410c; }
+.deepread-rail .dr-badges { display: none; flex-shrink: 0; gap: 3px; }
+.deepread-rail .dr-rcard.dr-compact .dr-badges { display: flex; }
+.deepread-rail .dr-badge { padding: 0 5px; border-radius: 8px; font-size: 0.78em; line-height: 1.55; font-weight: 600; }
+.deepread-rail .dr-badge-fc { background: #fbf4e4; color: #7a5300; }
+.deepread-rail .dr-badge-note { background: #eaf5ee; color: #1f6b3a; }
+.deepread-rail .dr-para .dr-explain { font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif; line-height: 1.75; margin-top: 6px; }
+.deepread-rail .dr-para .dr-points { margin-top: 7px; padding-top: 6px; border-top: 1px solid rgba(0,0,0,0.06); }
+.deepread-rail .dr-para .dr-trtoggle { padding: 1px 8px; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; background: #fafaf8; }
+.deepread-rail .dr-rcard.dr-para.dr-compact { padding-bottom: 0; }
+.deepread-rail .dr-rcard.dr-para.dr-compact .dr-phead { padding: 5px 8px; border-bottom: none; margin-bottom: 0; }
+.deepread-rail .dr-rcard.dr-para.dr-compact:hover .dr-phead { border-bottom: 1px solid rgba(0,0,0,0.05); }
+.deepread-rail .dr-rcard.dr-para.dr-compact:hover { padding-bottom: 8px; }
+:root[data-color-scheme="dark"] .deepread-rail .dr-phead { background: rgba(255,255,255,0.04) !important; border-color: rgba(255,255,255,0.08); }
 .deepread-rail .dr-rcard.dr-compact { padding-block: 3px; }
 .deepread-rail .dr-rcard.dr-compact .dr-rsummary { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .deepread-rail .dr-rcard.dr-compact .dr-points, .deepread-rail .dr-rcard.dr-compact .dr-explain,
@@ -126,7 +181,7 @@
     }
 
     get enabled() {
-      return DeepRead.prefs.get("view.marginCards") !== false;
+      return DeepRead.Modules.enabled(this.session, "cards");
     }
 
     /** "split": left-column paragraphs get cards on the left of the PDF; "right": one rail. */
@@ -195,6 +250,33 @@
     }
 
     /** "p. 3 ¶2" — how cards are referred to in the chat. */
+    /** First figure/table mentioned in a paragraph: { id, panel } or null. */
+    static figureMention(text, figures) {
+      if (!text || !figures?.length) return null;
+      const re = /(?<![A-Za-z])(Figs?|Figures?|Tables?|Tab)\.?\s*(\d+|[IVX]+)(?:\s*\(([a-z])\)|([a-z])(?![A-Za-z]))?/gi;
+      for (const m of text.matchAll(re)) {
+        const kind = /^t/i.test(m[1]) ? "table" : "figure";
+        const figure = figures.find((f) => f.kind === kind && String(f.number).toUpperCase() === m[2].toUpperCase());
+        if (figure) return { id: figure.id, panel: (m[3] || m[4] || "").toLowerCase() || null };
+      }
+      return null;
+    }
+
+    /** "图 3" / "Fig. 3", "表 I" / "Table I" in the interface language. */
+    static figureLabel(figure) {
+      const table = figure.kind === "table";
+      return DeepRead.bilingual(`${table ? "表" : "图"} ${figure.number}`, `${table ? "Table" : "Fig."} ${figure.number}`);
+    }
+
+    static roleLabel(role) {
+      const labels = {
+        background: ["背景", "Background"], gap: ["空白", "Gap"], prior: ["已有方案", "Prior work"],
+        contribution: ["贡献", "Contribution"], method: ["方法", "Method"], result: ["结果", "Result"], limitation: ["局限", "Limitation"],
+      };
+      const [zh, en] = labels[role] || [role, role];
+      return DeepRead.bilingual(zh, en);
+    }
+
     static blockLabel(paragraph) {
       return `p. ${paragraph.pageIndex + 1} ¶${paragraph.paragraphIndex + 1}`;
     }
@@ -325,6 +407,8 @@
           for (const card of this.cards.values()) card.sig = null;
           this.schedule(true);
         }));
+      // Layout (split / right only) needs a rebuild, which unregisters this observer: do it after the callback.
+      observers.push(Zotero.Prefs.registerObserver("deepread.view.railLayout", () => this.readerWin?.setTimeout(() => this.refresh(), 0)));
       this._cleanup.push(() => observers.forEach((id) => Zotero.Prefs.unregisterObserver(id)));
       this.overlay.setRailActive?.(true);
 
@@ -332,7 +416,12 @@
       const viewer = this.pdfWin.document.getElementById("viewerContainer");
       viewer?.addEventListener("scroll", schedule, { passive: true });
       this._cleanup.push(() => viewer?.removeEventListener("scroll", schedule));
-      const onRendered = Components.utils.exportFunction(() => this.schedule(true), this.pdfWin);
+      const onRendered = Components.utils.exportFunction((event) => {
+        // Figure thumbnails are cut from the page canvas: redraw them once their page has rendered.
+        const page = Number(event?.pageNumber) - 1;
+        for (const [key, card] of this.cards) if (key.startsWith("g_") && card.page === page) card.sig = null;
+        this.schedule(true);
+      }, this.pdfWin);
       try {
         this.app.eventBus.on("pagerendered", onRendered);
         this.app.eventBus.on("scalechanging", onRendered);
@@ -441,6 +530,18 @@
         const rect = card.rects?.length ? DeepRead.Overlay.unionRect(card.rects) : null;
         if (!rect) continue;
         items.push({ key: `f_${card.id}`, kind: "flashcard", pageIndex: card.pageIndex, rect, data: card });
+      }
+      if (DeepRead.Modules.enabled(this.session, "figureCards") && this.session.hasResults) {
+        const figures = this.session.figures();
+        for (const figure of figures) {
+          const rect = this.overlay.permilleRect(figure.pageIndex, figure.bbox);
+          if (rect) items.push({ key: `g_${figure.id}`, kind: "figure", pageIndex: figure.pageIndex, rect, data: figure });
+        }
+        // Papers read before figure guides existed: write them once, in the background.
+        if (figures.length && !this.session._figuresRequested && DeepRead.prefs.get("cards.autoExplain") !== false) {
+          this.session._figuresRequested = true;
+          this.session.explainFigures().catch((e) => DeepRead.log("figure guides failed", String(e)));
+        }
       }
       return items;
     }
@@ -611,11 +712,16 @@
 
     _signature(item) {
       if (item.kind === "flashcard") return `f|${this._cardSignature(item.data)}`;
+      if (item.kind === "figure") {
+        const focus = this.figureFocus?.id === item.data.id ? this.figureFocus.panel || "*" : "";
+        return `g|${JSON.stringify(this.session.figureGuide(item.data.id))}|${this.session.explainingFigures}|${focus}`
+          + `|${this.compactPages?.has(`${item.side || "right"}:${item.pageIndex}`) ? "c" : ""}`;
+      }
       const p = item.data;
       const levels = (p.points || []).map((pt) => this.session.pointLevel(pt)).join("");
       const attached = this.session.flashcardsForParagraph(item.key).map((c) => this._cardSignature(c)).join("||");
       return `p|${this.session.paragraphSummary(p)}|${levels}|${this.isOpen(item.key)}|${this.focusKey === item.key}|${this._translationOpen(item.key)}`
-        + `|${this.session.explanation(item.key)}|${this.session.isExplaining(item.key)}`
+        + `|${this.session.explanation(item.key)}|${this.session.isExplaining(item.key)}|${this.session.paragraphRole?.(item.key)}`
         + `|${this.compactPages?.has(`${item.side || "right"}:${item.pageIndex}`) ? "c" : ""}`
         + `|${this.session.paragraphNote(item.key)}|${this.noteEditing === item.key}|${attached}`;
     }
@@ -630,7 +736,7 @@
       let card = this.cards.get(item.key);
       const sig = this._signature(item);
       if (!card) {
-        card = { el: el(this.readerDoc, "div", "dr-rcard"), height: 0, width: 0, sig: null };
+        card = { el: el(this.readerDoc, "div", "dr-rcard"), height: 0, width: 0, sig: null, page: item.pageIndex };
         card.el.dataset.key = item.key;
         this.cards.set(item.key, card);
       }
@@ -642,6 +748,7 @@
       if (card.sig !== sig) {
         card.el.replaceChildren();
         if (item.kind === "flashcard") this._fillFlashcard(card.el, item.data);
+        else if (item.kind === "figure") this._fillFigure(card.el, item.data, item);
         else this._fillParagraph(card.el, item.key, item.data);
         card.sig = sig;
         card.height = 0;
@@ -672,7 +779,17 @@
       node.classList.toggle("dr-open", this.focusKey === key);
       const side = this._sideOfKey?.get(key) || "right";
       node.classList.toggle("dr-compact", !!this.compactPages?.has(`${side}:${paragraph.pageIndex}`) && !this.isOpen(key));
+      node.classList.add("dr-para");
+      const role = session.paragraphRole?.(key) || "";
+      node.dataset.role = role;
       const head = el(doc, "div", "dr-rhead");
+      if (role) head.append(el(doc, "span", `dr-role dr-role-${role}`, DeepRead.Rail.roleLabel(role)));
+      const level = Math.max(1, ...(paragraph.points || []).map((p) => session.pointLevel(p)));
+      if (level >= 2) {
+        const dot = el(doc, "span", `dr-imp dr-imp-${level}`);
+        dot.title = level === 3 ? DeepRead.bilingual("关键", "Critical") : DeepRead.bilingual("重要", "Important");
+        head.append(dot);
+      }
       const summary = el(doc, "div", "dr-rsummary", session.paragraphSummary(paragraph) || "…");
       summary.title = DeepRead.bilingual("单击展开 / 收起 · 双击编辑", "Click to open / close · double-click to edit");
       summary.addEventListener("click", () => {
@@ -711,6 +828,12 @@
       });
       summary.addEventListener("blur", () => finish(true));
       head.append(summary);
+      // One-line (compact) cards keep a hint of what is folded inside.
+      const badges = el(doc, "span", "dr-badges");
+      const cardCount = session.flashcardsForParagraph(key).length;
+      if (cardCount) badges.append(el(doc, "span", "dr-badge dr-badge-fc", DeepRead.bilingual(`闪卡 ${cardCount}`, `${cardCount} cards`)));
+      if (session.paragraphNote(key)) badges.append(el(doc, "span", "dr-badge dr-badge-note", DeepRead.bilingual("理解", "Note")));
+      if (badges.childNodes.length) head.append(badges);
 
       const actions = el(doc, "div", "dr-ractions");
       this._button(actions, "⧉", DeepRead.t("card.copySummary"), () => {
@@ -746,7 +869,9 @@
         session.setCardHidden(key, true);
       });
       head.append(actions);
-      node.append(head);
+      const headWrap = el(doc, "div", "dr-phead");
+      headWrap.append(head);
+      node.append(headWrap);
 
       // Body: the AI's explanation of the paragraph.
       const explanation = session.explanation(key);
@@ -883,6 +1008,95 @@
       return wrap;
     }
 
+    /** Figure/table card: label, title, thumbnail cut from the rendered page, and reading steps. */
+    _fillFigure(node, figure, item) {
+      const doc = this.readerDoc;
+      const session = this.session;
+      node.classList.add("dr-figure");
+      const focus = this.figureFocus?.id === figure.id ? this.figureFocus : null;
+      node.classList.toggle("dr-linked", !!focus);
+      const side = item?.side || this._sideOfKey?.get(`g_${figure.id}`) || "right";
+      const compact = !!this.compactPages?.has(`${side}:${figure.pageIndex}`) && !focus;
+      node.classList.toggle("dr-compact", compact);
+      const guide = session.figureGuide(figure.id);
+      const head = el(doc, "div", "dr-fhead");
+      const label = DeepRead.Rail.figureLabel(figure);
+      head.append(el(doc, "span", "dr-flabel", label));
+      head.append(el(doc, "span", "dr-ftitle", guide?.title || figure.title || ""));
+      const count = session.figureMentionCount(figure.id);
+      if (count) head.append(el(doc, "span", "dr-fcount", DeepRead.bilingual(`提到 ${count} 次`, `${count} mentions`)));
+      node.append(head);
+
+      const thumb = el(doc, "canvas", "dr-fthumb");
+      thumb.setAttribute("role", "img");
+      thumb.setAttribute("aria-label", `${label} ${figure.title || ""}`);
+      node.append(thumb);
+      this._drawThumb(thumb, figure);
+
+      const body = el(doc, "div", "dr-fbody");
+      if (guide?.steps?.length) {
+        const list = el(doc, "ol", "dr-fsteps");
+        guide.steps.forEach((step, i) => {
+          const li = el(doc, "li");
+          const on = focus && (focus.panel ? step.panel === focus.panel : false);
+          li.classList.toggle("dr-on", !!on);
+          li.append(el(doc, "span", "dr-fnum", String(i + 1)));
+          const text = el(doc, "span", "dr-ftext");
+          text.append(DeepRead.Overlay.inlineMarkdown(doc, step.text || ""));
+          li.append(text);
+          list.append(li);
+        });
+        body.append(list);
+      }
+      else if (session.explainingFigures) {
+        body.append(el(doc, "div", "dr-muted", DeepRead.bilingual("读图步骤生成中…", "Writing the reading guide…")));
+      }
+      else if (figure.caption) {
+        body.append(el(doc, "div", "dr-fcaption", figure.caption.length > 160 ? `${figure.caption.slice(0, 160)}…` : figure.caption));
+      }
+      node.append(body);
+      node.title = DeepRead.bilingual("单击跳到图表", "Click to go to the figure");
+      node.onclick = () => {
+        const rect = this.overlay.permilleRect(figure.pageIndex, figure.bbox);
+        session.reader.navigate(rect ? { position: { pageIndex: figure.pageIndex, rects: [rect] } } : { pageIndex: figure.pageIndex });
+      };
+      node.onpointerenter = () => {
+        const rect = this.overlay.permilleRect(figure.pageIndex, figure.bbox);
+        if (rect) this.overlay._drawHover({ pageIndex: figure.pageIndex, bbox: rect, rects: [rect], points: [] });
+      };
+      node.onpointerleave = () => this.overlay._clearTransient();
+    }
+
+    /** Copy the figure's region from the page canvas pdf.js already rendered (blank until it has). */
+    _drawThumb(canvas, figure) {
+      const width = Math.max(120, (this.root?.clientWidth || 280) - 44);
+      const [x1, y1, x2, y2] = figure.bbox || [0, 0, 1000, 1000];
+      const aspect = Math.max(0.15, (y2 - y1) / Math.max(1, x2 - x1));
+      const height = Math.min(180, Math.round(width * aspect));
+      const ratio = this.readerWin?.devicePixelRatio || 1;
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      try {
+        const div = this.app?.pdfViewer?.getPageView(figure.pageIndex)?.div;
+        const source = div?.querySelector("canvas");
+        if (!source || !source.width) return;
+        const src = Components.utils.unwaiveXrays ? Components.utils.unwaiveXrays(source) : source;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(src,
+          (x1 / 1000) * source.width, (y1 / 1000) * source.height,
+          ((x2 - x1) / 1000) * source.width, ((y2 - y1) / 1000) * source.height,
+          0, 0, canvas.width, canvas.height);
+        canvas.dataset.drawn = "1";
+      }
+      catch (e) {
+        DeepRead.log("figure thumbnail failed", String(e));
+      }
+    }
+
     _fillFlashcard(node, card) {
       node.classList.add("dr-flash");
       node.append(this._flashcardBlock(card, null));
@@ -1004,6 +1218,14 @@
       if (!this.root) return;
       const key = paragraph ? `p_${paragraph.pageIndex}_${paragraph.paragraphIndex}` : null;
       for (const [k, card] of this.cards) card.el.classList.toggle("dr-linked", k === key);
+      // A paragraph that mentions a figure ("Fig. 3(b)") lights up that figure's card and step.
+      const focus = paragraph ? DeepRead.Rail.figureMention(paragraph.paragraphText || "", this.session.figures()) : null;
+      const before = this.figureFocus?.id;
+      if (focus?.id !== before || focus?.panel !== this.figureFocus?.panel) {
+        this.figureFocus = focus;
+        for (const id of [before, focus?.id]) if (id && this.cards.get(`g_${id}`)) this.cards.get(`g_${id}`).sig = null;
+        this.schedule();
+      }
     }
   };
 })();

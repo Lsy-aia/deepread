@@ -80,7 +80,7 @@ E2E.run = async function () {
   const cardEl = () => rail.cards.get(key)?.el;
   const body = cardEl()?.querySelector(".dr-explain");
   step("card", {
-    explainFirst: cardEl()?.querySelector(".dr-rhead")?.nextElementSibling?.classList.contains("dr-explain"),
+    explainFirst: cardEl()?.querySelector(".dr-phead")?.nextElementSibling?.classList.contains("dr-explain"),
     bold: !!body?.querySelector("strong"),
     math: !!body?.querySelector(".katex"),
     toggle: cardEl()?.querySelector(".dr-trtoggle")?.textContent,

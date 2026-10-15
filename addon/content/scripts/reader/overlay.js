@@ -310,6 +310,16 @@
       return inv ? apply(inv, px, py) : null;
     }
 
+    /** PDF rect of a content-list bbox (per-mille, top-left origin) on a page, or null if the page is unknown. */
+    permilleRect(pageIndex, bbox) {
+      const pageView = this.app?.pdfViewer?.getPageView(pageIndex);
+      const view = pageView?.pdfPage?.view ? Array.from(pageView.pdfPage.view) : null;
+      if (!view || !Array.isArray(bbox) || bbox.length < 4) return null;
+      const w = view[2] - view[0];
+      const h = view[3] - view[1];
+      return [view[0] + (bbox[0] / 1000) * w, view[3] - (bbox[3] / 1000) * h, view[0] + (bbox[2] / 1000) * w, view[3] - (bbox[1] / 1000) * h];
+    }
+
     /** Client rect (in the outer reader document) of a PDF rect on a page. */
     _rectInReaderDoc(pageIndex, rect) {
       const geom = this._geometry(pageIndex);

@@ -21,9 +21,21 @@
 			</html:div>
 		</groupbox>
 
-		<!-- LLM -->
+		<!-- Channel 1: reading API -->
 		<groupbox aria-labelledby="deepread-pref-llm-title">
 			<label><html:h2 id="deepread-pref-llm-title" data-l10n-id="deepread-pref-llm-title"/></label>
+			<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-llm-hint"/>
+			<html:div id="deepread-pref-profiles" class="deepread-cards" role="radiogroup"/>
+			<hbox align="center" class="deepread-pref-row deepread-pref-buttons">
+				<button id="deepread-pref-profile-add" data-l10n-id="deepread-pref-profile-add"/>
+				<button id="deepread-pref-profile-copy" data-l10n-id="deepread-pref-profile-copy"/>
+				<button id="deepread-pref-profile-delete" data-l10n-id="deepread-pref-profile-delete"/>
+			</hbox>
+			<html:span id="deepread-pref-current-tpl" class="deepread-card-badge" hidden="true" data-l10n-id="deepread-pref-current"/>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-profile-name" control="deepread-pref-profile-name"/>
+				<html:input id="deepread-pref-profile-name" type="text" class="deepread-pref-input"/>
+			</hbox>
 			<hbox align="center" class="deepread-pref-row">
 				<label data-l10n-id="deepread-pref-llm-preset" control="deepread-pref-llm-preset"/>
 				<menulist id="deepread-pref-llm-preset" native="true">
@@ -85,20 +97,40 @@
 			</hbox>
 		</groupbox>
 
-		<!-- Parser -->
+		<!-- Channel 2: document parsing -->
 		<groupbox aria-labelledby="deepread-pref-parser-title">
 			<label><html:h2 id="deepread-pref-parser-title" data-l10n-id="deepread-pref-parser-title"/></label>
-			<hbox align="center" class="deepread-pref-row">
-				<label data-l10n-id="deepread-pref-parser-provider" control="deepread-pref-parser-provider"/>
-				<menulist id="deepread-pref-parser-provider" native="true" preference="extensions.zotero.deepread.parser.provider">
-					<menupopup>
-						<menuitem data-l10n-id="deepread-pref-parser-provider-builtin" value="builtin"/>
-						<menuitem data-l10n-id="deepread-pref-parser-provider-grobid" value="grobid"/>
-						<menuitem data-l10n-id="deepread-pref-parser-provider-mineru" value="mineru"/>
-						<menuitem data-l10n-id="deepread-pref-parser-provider-selfhost" value="selfhost"/>
-					</menupopup>
-				</menulist>
-			</hbox>
+			<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-parser-hint"/>
+			<html:div id="deepread-pref-parser-cards" class="deepread-cards" role="radiogroup">
+				<html:div class="deepread-card" role="radio" tabindex="0" data-value="mineru">
+					<html:span class="deepread-card-title" data-l10n-id="deepread-pref-card-parser-mineru-title"/>
+					<html:span class="deepread-card-desc" data-l10n-id="deepread-pref-card-parser-mineru-desc"/>
+					<html:span class="deepread-card-badge" data-l10n-id="deepread-pref-current"/>
+				</html:div>
+				<html:div class="deepread-card" role="radio" tabindex="0" data-value="selfhost">
+					<html:span class="deepread-card-title" data-l10n-id="deepread-pref-card-parser-selfhost-title"/>
+					<html:span class="deepread-card-desc" data-l10n-id="deepread-pref-card-parser-selfhost-desc"/>
+					<html:span class="deepread-card-badge" data-l10n-id="deepread-pref-current"/>
+				</html:div>
+				<html:div class="deepread-card" role="radio" tabindex="0" data-value="builtin">
+					<html:span class="deepread-card-title" data-l10n-id="deepread-pref-card-parser-builtin-title"/>
+					<html:span class="deepread-card-desc" data-l10n-id="deepread-pref-card-parser-builtin-desc"/>
+					<html:span class="deepread-card-badge" data-l10n-id="deepread-pref-current"/>
+				</html:div>
+				<html:div class="deepread-card" role="radio" tabindex="0" data-value="grobid">
+					<html:span class="deepread-card-title" data-l10n-id="deepread-pref-card-parser-grobid-title"/>
+					<html:span class="deepread-card-desc" data-l10n-id="deepread-pref-card-parser-grobid-desc"/>
+					<html:span class="deepread-card-badge" data-l10n-id="deepread-pref-current"/>
+				</html:div>
+			</html:div>
+			<menulist id="deepread-pref-parser-provider" native="true" hidden="true" preference="extensions.zotero.deepread.parser.provider">
+				<menupopup>
+					<menuitem data-l10n-id="deepread-pref-parser-provider-builtin" value="builtin"/>
+					<menuitem data-l10n-id="deepread-pref-parser-provider-grobid" value="grobid"/>
+					<menuitem data-l10n-id="deepread-pref-parser-provider-mineru" value="mineru"/>
+					<menuitem data-l10n-id="deepread-pref-parser-provider-selfhost" value="selfhost"/>
+				</menupopup>
+			</menulist>
 
 			<vbox id="deepread-pref-parser-builtin">
 				<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-parser-builtin-hint"/>
@@ -158,9 +190,87 @@
 			</hbox>
 		</groupbox>
 
-		<!-- Reading -->
-		<groupbox aria-labelledby="deepread-pref-reading-title">
-			<label><html:h2 id="deepread-pref-reading-title" data-l10n-id="deepread-pref-reading-title"/></label>
+		<!-- Channel 3: agent -->
+		<groupbox aria-labelledby="deepread-pref-agent-title">
+			<label><html:h2 id="deepread-pref-agent-title" data-l10n-id="deepread-pref-agent-title"/></label>
+			<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-agent-hint"/>
+			<html:div id="deepread-pref-agent-cards" class="deepread-cards" role="radiogroup">
+				<html:div class="deepread-card" role="radio" tabindex="0" data-value="none">
+					<html:span class="deepread-card-title" data-l10n-id="deepread-pref-card-agent-none-title"/>
+					<html:span class="deepread-card-desc" data-l10n-id="deepread-pref-card-agent-none-desc"/>
+					<html:span class="deepread-card-badge" data-l10n-id="deepread-pref-current"/>
+				</html:div>
+				<html:div class="deepread-card" role="radio" tabindex="0" data-value="codex">
+					<html:span class="deepread-card-title" data-l10n-id="deepread-pref-card-agent-codex-title"/>
+					<html:span class="deepread-card-desc" data-l10n-id="deepread-pref-card-agent-codex-desc"/>
+					<html:span class="deepread-card-badge" data-l10n-id="deepread-pref-current"/>
+				</html:div>
+				<html:div class="deepread-card" role="radio" tabindex="0" data-value="claude">
+					<html:span class="deepread-card-title" data-l10n-id="deepread-pref-card-agent-claude-title"/>
+					<html:span class="deepread-card-desc" data-l10n-id="deepread-pref-card-agent-claude-desc"/>
+					<html:span class="deepread-card-badge" data-l10n-id="deepread-pref-current"/>
+				</html:div>
+				<html:div class="deepread-card" role="radio" tabindex="0" data-value="api">
+					<html:span class="deepread-card-title" data-l10n-id="deepread-pref-card-agent-api-title"/>
+					<html:span class="deepread-card-desc" data-l10n-id="deepread-pref-card-agent-api-desc"/>
+					<html:span class="deepread-card-badge" data-l10n-id="deepread-pref-current"/>
+				</html:div>
+				<html:div class="deepread-card" role="radio" tabindex="0" data-value="import">
+					<html:span class="deepread-card-title" data-l10n-id="deepread-pref-card-agent-import-title"/>
+					<html:span class="deepread-card-desc" data-l10n-id="deepread-pref-card-agent-import-desc"/>
+					<html:span class="deepread-card-badge" data-l10n-id="deepread-pref-current"/>
+				</html:div>
+			</html:div>
+			<vbox id="deepread-pref-agent-command-block">
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-agent-command" control="deepread-pref-agent-command"/>
+					<html:input id="deepread-pref-agent-command" type="text" class="deepread-pref-input" placeholder="codex exec" preference="extensions.zotero.deepread.agent.command"/>
+				</hbox>
+			</vbox>
+			<vbox id="deepread-pref-agent-api-block">
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-agent-api-baseurl" control="deepread-pref-agent-api-baseurl"/>
+					<html:input id="deepread-pref-agent-api-baseurl" type="text" class="deepread-pref-input" placeholder="https://api.anthropic.com" preference="extensions.zotero.deepread.agent.api.baseURL"/>
+				</hbox>
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-agent-api-apikey" control="deepread-pref-agent-api-apikey"/>
+					<html:input id="deepread-pref-agent-api-apikey" type="password" class="deepread-pref-input" autocomplete="off" preference="extensions.zotero.deepread.agent.api.apiKey"/>
+				</hbox>
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-agent-api-model" control="deepread-pref-agent-api-model"/>
+					<html:input id="deepread-pref-agent-api-model" type="text" class="deepread-pref-input" preference="extensions.zotero.deepread.agent.api.model"/>
+				</hbox>
+			</vbox>
+			<vbox id="deepread-pref-agent-skills-block">
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-agent-skills"/>
+					<checkbox id="deepread-pref-agent-skill-xray" data-skill="nature-paper-xray" label="nature-paper-xray"/>
+					<checkbox id="deepread-pref-agent-skill-card" data-skill="nature-paper-card" label="nature-paper-card"/>
+				</hbox>
+				<hbox align="center" class="deepread-pref-row">
+					<label data-l10n-id="deepread-pref-agent-timeout" control="deepread-pref-agent-timeout"/>
+					<html:input id="deepread-pref-agent-timeout" type="number" min="1" max="240" step="1" size="6" preference="extensions.zotero.deepread.agent.timeoutMin"/>
+				</hbox>
+			</vbox>
+			<vbox id="deepread-pref-agent-import-block">
+				<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-agent-import-hint"/>
+			</vbox>
+			<hbox id="deepread-pref-agent-detect-row" align="center" class="deepread-pref-row">
+				<button id="deepread-pref-agent-detect" data-l10n-id="deepread-pref-agent-detect"/>
+				<label id="deepread-pref-agent-status" class="deepread-pref-status" value=""/>
+			</hbox>
+		</groupbox>
+
+		<!-- Feature modules -->
+		<groupbox aria-labelledby="deepread-pref-modules-title">
+			<label><html:h2 id="deepread-pref-modules-title" data-l10n-id="deepread-pref-modules-title"/></label>
+			<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-modules-hint"/>
+			<checkbox id="deepread-pref-mod-margincards" data-l10n-id="deepread-pref-mod-margincards" preference="extensions.zotero.deepread.view.marginCards"/>
+			<html:div class="deepread-pref-hint deepread-pref-indent" data-l10n-id="deepread-pref-mod-margincards-hint"/>
+			<checkbox id="deepread-pref-view-translation" data-l10n-id="deepread-pref-view-translation" preference="extensions.zotero.deepread.view.translationPopup"/>
+			<checkbox id="deepread-pref-mod-structurebar" data-l10n-id="deepread-pref-mod-structurebar" preference="extensions.zotero.deepread.view.structureBar"/>
+			<checkbox id="deepread-pref-mod-figurecards" data-l10n-id="deepread-pref-mod-figurecards" preference="extensions.zotero.deepread.view.figureCards"/>
+			<label class="deepread-pref-subtitle"><html:h3 data-l10n-id="deepread-pref-reading-title"/></label>
 			<hbox align="center" class="deepread-pref-row">
 				<label data-l10n-id="deepread-pref-language" control="deepread-pref-language"/>
 				<menulist id="deepread-pref-language" native="true" preference="extensions.zotero.deepread.language">
@@ -180,7 +290,6 @@
 			<checkbox id="deepread-pref-filter-author" data-l10n-id="deepread-pref-filter-author" preference="extensions.zotero.deepread.filterAuthorBlocks"/>
 			<checkbox id="deepread-pref-view-highlights" data-l10n-id="deepread-pref-view-highlights" preference="extensions.zotero.deepread.view.highlights"/>
 			<checkbox id="deepread-pref-view-hovercards" data-l10n-id="deepread-pref-view-hovercards" preference="extensions.zotero.deepread.view.hoverCards"/>
-			<checkbox id="deepread-pref-view-translation" data-l10n-id="deepread-pref-view-translation" preference="extensions.zotero.deepread.view.translationPopup"/>
 			<hbox align="center" class="deepread-pref-row">
 				<label data-l10n-id="deepread-pref-card-width" control="deepread-pref-card-width"/>
 				<html:input id="deepread-pref-card-width" class="deepread-pref-slider" type="range" min="200" max="520" step="10"/>
@@ -192,6 +301,15 @@
 				<label id="deepread-pref-card-fontsize-value" class="deepread-pref-slider-value" value=""/>
 			</hbox>
 			<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-card-size-hint"/>
+			<hbox align="center" class="deepread-pref-row">
+				<label data-l10n-id="deepread-pref-card-layout" control="deepread-pref-card-layout"/>
+				<menulist id="deepread-pref-card-layout" native="true" preference="extensions.zotero.deepread.view.railLayout">
+					<menupopup>
+						<menuitem data-l10n-id="deepread-pref-card-layout-split" value="split"/>
+						<menuitem data-l10n-id="deepread-pref-card-layout-right" value="right"/>
+					</menupopup>
+				</menulist>
+			</hbox>
 			<checkbox id="deepread-pref-cards-autoexplain" data-l10n-id="deepread-pref-cards-autoexplain" preference="extensions.zotero.deepread.cards.autoExplain"/>
 			<html:div class="deepread-pref-hint" data-l10n-id="deepread-pref-cards-autoexplain-hint"/>
 			<checkbox id="deepread-pref-cards-translationopen" data-l10n-id="deepread-pref-cards-translationopen" preference="extensions.zotero.deepread.cards.translationOpen"/>
@@ -205,6 +323,7 @@
 		<groupbox aria-labelledby="deepread-pref-privacy-title">
 			<label><html:h2 id="deepread-pref-privacy-title" data-l10n-id="deepread-pref-privacy-title"/></label>
 			<description data-l10n-id="deepread-pref-privacy-note"/>
+			<description data-l10n-id="deepread-pref-privacy-agent"/>
 		</groupbox>
 	</vbox>
 </vbox>
