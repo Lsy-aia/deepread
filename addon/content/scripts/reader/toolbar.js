@@ -18,6 +18,10 @@
 .deepread-toolbar .dr-menu-button { width: auto; padding: 0 7px; gap: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .deepread-toolbar .dr-questions-button { width: auto; padding: 0 7px; font-size: 12px; font-weight: 600; white-space: nowrap; color: #6d28d9; }
 .deepread-toolbar .dr-questions-button[hidden] { display: none; }
+.deepread-toolbar .dr-guide-button { width: auto; padding: 0 7px; font-size: 12px; font-weight: 600; white-space: nowrap; color: #0f766e; }
+.deepread-toolbar .dr-guide-button.dr-ready::after { content: " ✓"; }
+.deepread-toolbar .dr-guide-button[aria-pressed="true"] { background: var(--fill-quinary, rgba(0,0,0,0.08)); }
+.deepread-toolbar .dr-guide-button[hidden] { display: none; }
 .deepread-toolbar .dr-menu-button .dr-count { font-weight: 400; opacity: 0.7; font-size: 11px; }
 .deepread-menu { position: fixed; z-index: 2147483001; min-width: 220px; padding: 4px; border-radius: 8px;
   background: var(--material-toolbar, #fff); color: var(--fill-primary, #222); border: 1px solid rgba(0,0,0,0.12);
@@ -365,7 +369,23 @@
         ? DeepRead.bilingual("问题…", "Questions…")
         : `${DeepRead.bilingual("问题", "Questions")} ${reached}/${total || 5}`;
     };
-    const container = h(doc, "div", { class: "deepread-toolbar" }, runButton, questionsButton, menuButton);
+    // 带读: opens the guided-reading panel; shows when the agent is working.
+    const guideButton = h(doc, "button", {
+      class: "toolbar-button dr-guide-button",
+      title: DeepRead.bilingual("带读：定位 → 骨架 → 方法 → 证据 → 带走", "Guided reading: position → skeleton → method → evidence → takeaway"),
+      onclick: () => session.guidePanel?.toggle(),
+    });
+    const updateGuide = () => {
+      const on = DeepRead.Modules.enabled(session, "guided") && session.hasResults;
+      guideButton.hidden = !on;
+      if (!on) return;
+      const status = session.guideStatus;
+      guideButton.textContent = status === "running" || status === "structuring" ? DeepRead.bilingual("带读…", "Guide…")
+        : DeepRead.bilingual("带读", "Guide");
+      guideButton.classList.toggle("dr-ready", status === "ready");
+      guideButton.setAttribute("aria-pressed", String(!!session.guidePanel?.isOpen));
+    };
+    const container = h(doc, "div", { class: "deepread-toolbar" }, runButton, questionsButton, guideButton, menuButton);
 
     const update = () => {
       const running = session.status === "running";
@@ -390,10 +410,12 @@
       if (type === "change" || type === "progress") update();
       if (type === "modules" || type === "change") updateCount();
       if (type === "modules" || type === "change" || type === "questions") updateQuestions();
+      if (type === "modules" || type === "change" || type === "guide" || type === "guidePanel") updateGuide();
     });
     update();
     updateCount();
     updateQuestions();
+    updateGuide();
     append(container);
     session.init().then(update);
   }

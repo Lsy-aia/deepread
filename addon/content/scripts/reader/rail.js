@@ -142,6 +142,15 @@
   font-weight: 700; line-height: 1.6; background: #ede9fe; color: #5b21b6; cursor: pointer; }
 .deepread-rail .dr-q:hover { background: #ddd6fe; }
 :root[data-color-scheme="dark"] .deepread-rail .dr-q { background: rgba(139,92,246,0.25); color: #ddd6fe; }
+.deepread-rail .dr-guide-notes { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.deepread-rail .dr-guide-note { display: flex; gap: 6px; align-items: baseline; font-size: 0.88em; line-height: 1.45; }
+.deepread-rail .dr-gn-label { flex-shrink: 0; padding: 0 5px; border-radius: 4px; font-weight: 700; font-size: 0.9em; background: #e6f4f1; color: #0f5f58; }
+.deepread-rail .dr-gn-hedge .dr-gn-label { background: #fdf2e3; color: #92400e; }
+.deepread-rail .dr-gn-claim .dr-gn-label { background: #ede9fe; color: #5b21b6; }
+.deepread-rail .dr-gn-text { color: var(--fill-secondary, #57606a); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.deepread-rail .dr-rcard.dr-compact .dr-guide-notes { display: none; }
+.deepread-rail .dr-rcard.dr-compact:hover .dr-guide-notes { display: flex; }
+:root[data-color-scheme="dark"] .deepread-rail .dr-gn-label { background: rgba(20,184,166,0.18); color: #99f6e4; }
 .deepread-rail .dr-range { flex-shrink: 0; align-self: flex-start; margin-top: 0.15em; padding: 0 5px; border-radius: 8px;
   font-size: 0.75em; line-height: 1.6; color: var(--fill-secondary, #57606a); border: 1px solid rgba(0,0,0,0.12); }
 .deepread-rail .dr-trbody > .dr-trpart + .dr-trpart { margin-top: 0.45em; }
@@ -191,6 +200,11 @@
 :root[data-color-scheme="dark"] .deepread-rail .dr-explain { color: #e6e6e6; }
 :root[data-color-scheme="dark"] .deepread-rail .dr-rcard.dr-flash { background: #3a3320; border-color: rgba(234,179,8,0.35); }
 `;
+
+  /** Which 带读 step a card note belongs to. */
+  function note0Step(note) {
+    return { component: 3, hedge: 4, claim: 4, move: 2 }[note?.kind] || 1;
+  }
 
   function el(doc, tag, cls, text) {
     const node = doc.createElementNS(HTML_NS, tag);
@@ -802,7 +816,8 @@
       const attached = keys.flatMap((k) => this.session.flashcardsForParagraph(k)).map((c) => this._cardSignature(c)).join("||");
       const skim = this.session.skimDepth === "full" ? "" : `${this.session.skimDepth}:${this.session.skimTiers().tier.get(item.key) || ""}`;
       const questions = (this.session.questionsForKey?.(item.key) || []).map((q) => q.id).join(",");
-      return `p|${keys.join(",")}|${this.session.groupTitle(item.key)}|${this.session.highlightColors().join("")}|${skim}|${questions}`
+      const guided = this.session.guide && DeepRead.Modules.enabled(this.session, "guided") ? this.session.guide.meta?.finishedAt || 1 : "";
+      return `p|${keys.join(",")}|${this.session.groupTitle(item.key)}|${this.session.highlightColors().join("")}|${skim}|${questions}|${guided}`
         + `|${paras.map((p) => this.session.paragraphSummary(p)).join("|")}|${levels}|${this.isOpen(item.key)}|${this.focusKey === item.key}|${this._translationOpen(item.key)}`
         + `|${this.session.explanation(item.key)}|${this.session.isExplaining(item.key)}|${this.session.paragraphRole?.(item.key)}`
         + `|${this.compactPages?.has(`${item.side || "right"}:${item.pageIndex}`) ? "c" : ""}`
@@ -1004,6 +1019,24 @@
         });
         missing.append(link);
         node.append(missing);
+      }
+
+      // Guided reading's judgements on these paragraphs (load-bearing, hedging, claim status).
+      const guideNotes = session.guideNotesForKey?.(key) || [];
+      if (guideNotes.length) {
+        const box = el(doc, "div", "dr-guide-notes");
+        for (const note of guideNotes.slice(0, 4)) {
+          const row = el(doc, "div", `dr-guide-note dr-gn-${note.kind}`);
+          row.append(el(doc, "span", "dr-gn-label", note.label));
+          if (note.text) row.append(el(doc, "span", "dr-gn-text", note.text));
+          box.append(row);
+        }
+        box.title = DeepRead.bilingual("来自带读 · 点击打开带读", "From the guided reading · click to open it");
+        box.addEventListener("click", (e) => {
+          e.stopPropagation();
+          session.guidePanel?.open(note0Step(guideNotes[0]));
+        });
+        node.append(box);
       }
 
       const points = paras.flatMap((p) => (p.points || []).map((point) => ({ point, owner: p })));
